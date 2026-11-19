@@ -4,20 +4,27 @@
 
 const stroke = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" } as const;
 
-/** Four ascending bars filled up to the level; auto is an "A". */
-function FanIcon({ level }: { level: number | "auto" }) {
-  if (level === "auto")
-    return (
-      <svg viewBox="0 0 28 24" width="28" height="24" {...stroke}>
-        <path d="M8.5 20L14 5l5.5 15M10.4 15h7.2" />
-      </svg>
-    );
+const BLADE = "M12 10.6c-.4-2.9.6-5.6 2.9-6.4 1.6-.5 2.9.6 2.6 2.1-.4 2-2.6 3.6-5.5 4.3z";
+
+/** A little fan. On the selected tile it spins, faster at each speed; auto gets an "A" badge. */
+function FanIcon({ level, spinning }: { level: number | "auto"; spinning: boolean }) {
+  const period = level === "auto" ? 1.6 : [0, 2.4, 1.4, 0.8, 0.42][level];
   return (
-    <svg viewBox="0 0 28 24" width="28" height="24">
-      {[0, 1, 2, 3].map((i) => {
-        const h = 5 + i * 4.5;
-        return <rect key={i} x={3 + i * 6} y={21 - h} width="4" height={h} rx="1.6" fill="currentColor" opacity={i < level ? 1 : 0.22} />;
-      })}
+    <svg viewBox="0 0 24 24" width="26" height="26">
+      <g className={spinning ? "fan-spin" : ""} style={{ "--spin": `${period}s` } as React.CSSProperties}>
+        {[0, 120, 240].map((r) => (
+          <path key={r} d={BLADE} fill="currentColor" transform={`translate(12 12) scale(1.22) translate(-12 -12) rotate(${r} 12 12)`} />
+        ))}
+        <circle cx="12" cy="12" r="1.9" fill="currentColor" />
+      </g>
+      {level === "auto" && (
+        <g>
+          <circle cx="19.5" cy="19.5" r="4.2" className="fan-badge" />
+          <text x="19.5" y="21.6" textAnchor="middle" fontSize="6" fontWeight="700" fill="currentColor">
+            A
+          </text>
+        </g>
+      )}
     </svg>
   );
 }
@@ -120,14 +127,14 @@ export function FanTiles({
   return (
     <Tiles
       title="Fan"
-      note={windFree ? "WindFree runs the fan on auto. Picking a speed turns WindFree off." : undefined}
+      note={windFree ? "WindFree is on. Changing the fan or the airflow turns it off." : undefined}
       value={value}
       disabled={disabled}
       onPick={onPick}
       items={modes.map((m) => ({
         id: m,
         label: FAN[m]?.label ?? m,
-        icon: <FanIcon level={FAN[m]?.level ?? 0} />,
+        icon: <FanIcon level={FAN[m]?.level ?? 0} spinning={!disabled && m === (windFree ? "auto" : value)} />,
         off: windFree && m !== "auto",
       }))}
     />
@@ -137,11 +144,13 @@ export function FanTiles({
 export function SwingTiles({
   modes,
   value,
+  windFree,
   disabled,
   onPick,
 }: {
   modes: string[];
   value: string | null;
+  windFree: boolean;
   disabled?: boolean;
   onPick: (m: string) => void;
 }) {
@@ -151,7 +160,7 @@ export function SwingTiles({
       value={value}
       disabled={disabled}
       onPick={onPick}
-      items={modes.map((m) => ({ id: m, label: SWING[m] ?? m, icon: <SwingIcon mode={m} /> }))}
+      items={modes.map((m) => ({ id: m, label: SWING[m] ?? m, icon: <SwingIcon mode={m} />, off: windFree }))}
     />
   );
 }

@@ -237,13 +237,14 @@ export default function Home() {
                 value={windFree ? "auto" : status?.fanMode ?? null}
                 windFree={windFree}
                 disabled={!on}
-                onPick={(m) => apply({ fanMode: m, ...(m !== "auto" && windFree ? { windFree: false } : {}) }, { fan: m })}
+                onPick={(m) => apply({ fanMode: m, ...(windFree ? { windFree: false } : {}) }, { fan: m })}
               />
               <SwingTiles
                 modes={status?.swingModes ?? []}
                 value={status?.swing ?? null}
+                windFree={windFree}
                 disabled={!on}
-                onPick={(s) => apply({ swing: s }, { swing: s })}
+                onPick={(s) => apply({ swing: s, ...(windFree ? { windFree: false } : {}) }, { swing: s })}
               />
 
               <Schedules presets={presets} flash={flash} open={sheet === "schedules"} onOpen={() => setSheet("schedules")} onClose={() => setSheet(null)} />

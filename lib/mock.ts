@@ -43,7 +43,7 @@ export async function mockApply(s: DesiredState) {
     if (s.mode) cur.mode = s.mode;
     const optional = s.optionalMode ?? (s.windFree === undefined ? undefined : s.windFree ? "windFree" : "off");
     if (optional) cur.optionalMode = optional;
-    if (s.fan && s.fan !== "auto" && optional === undefined) cur.optionalMode = "off";
+    if ((s.fan || s.swing) && optional === undefined) cur.optionalMode = "off"; // like the real unit
     if (s.fan) cur.fanMode = s.fan;
     if (s.swing) cur.swing = s.swing;
     if (s.display !== undefined) cur.display = s.display;

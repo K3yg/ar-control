@@ -19,7 +19,7 @@ export const desiredStateSchema = z
 
 export type DesiredState = z.infer<typeof desiredStateSchema>;
 
-/** Order: power on → mode → temp → optional mode → fan → swing → display. Power off sends only off. */
+/** Order: power on → mode → temp → fan → swing → optional mode → display. Power off sends only off. */
 export function buildCommands(s: DesiredState, display: DisplayStrategy): Command[] {
   if (s.power === "off") return [cmd.power(false)];
   const out: Command[] = [];
@@ -31,13 +31,13 @@ export function buildCommands(s: DesiredState, display: DisplayStrategy): Comman
   if (mode) out.push(cmd.mode(mode));
   if (s.temp !== undefined) out.push(cmd.temp(s.temp));
 
-  // A fixed fan speed isn't allowed during WindFree: leave WindFree first, like the Samsung app does.
+  // The real unit leaves WindFree on any fan or swing command (even "auto"). So fan and swing go
+  // first and the optional mode last: asking for WindFree + a swing keeps WindFree on.
   const leavesWindFree = s.fan && s.fan !== "auto" && optional === undefined;
   if (leavesWindFree) out.push(cmd.optionalMode(OPTIONAL_OFF));
-  else if (optional) out.push(cmd.optionalMode(optional));
-
   if (s.fan) out.push(cmd.fan(s.fan));
   if (s.swing) out.push(cmd.swing(s.swing));
+  if (optional && !leavesWindFree) out.push(cmd.optionalMode(optional));
   if (s.display !== undefined) {
     const d = cmd.display(s.display, display);
     if (d) out.push(d);
