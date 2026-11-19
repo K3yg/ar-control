@@ -1,19 +1,26 @@
 "use client";
 
 /**
- * The AC, drawn in slight perspective, and also the fan/airflow control:
- * tap the air for the next fan speed, tap the unit for the next airflow direction.
- * The louver follows the swing mode, the number and speed of streams follow the fan,
- * and WindFree turns the air into a slow mist.
+ * A Samsung WindFree wall unit, drawn in slight perspective and animated from the real state:
+ * - normal cooling: the blade opens and air streams come out of the bottom outlet;
+ *   the number and speed of streams follow the fan, their sweep follows the airflow setting.
+ * - WindFree: the blade closes and the air seeps out of the front micro-holes as a slow mist.
+ * The temperature display sits on the right, like on the real unit.
  */
 
 const SPEED: Record<string, number> = { auto: 3.2, low: 4.8, medium: 3.2, high: 2.1, turbo: 1.3 };
 const COUNT: Record<string, number> = { auto: 5, low: 3, medium: 5, high: 7, turbo: 9 };
 
-function streams(n: number) {
-  // Spread n streams evenly from -60 to 60.
-  return Array.from({ length: n }, (_, i) => (n === 1 ? 0 : -60 + (120 * i) / (n - 1)));
-}
+const spread = (n: number) => Array.from({ length: n }, (_, i) => (n === 1 ? 0 : -60 + (120 * i) / (n - 1)));
+
+// Deterministic pseudo-random positions for the mist motes.
+const MOTES = Array.from({ length: 34 }, (_, i) => ({
+  x: 18 + ((i * 53) % 236),
+  y: 14 + ((i * 29) % 58),
+  r: i % 4 === 0 ? 1.7 : 1.2,
+  delay: -((i * 0.61) % 7),
+  drift: ((i * 17) % 26) - 13,
+}));
 
 export function AcUnit({
   on,
@@ -22,8 +29,6 @@ export function AcUnit({
   windFree,
   display,
   temp,
-  onAir,
-  onBody,
 }: {
   on: boolean;
   fan: string | null;
@@ -31,40 +36,38 @@ export function AcUnit({
   windFree: boolean;
   display: boolean;
   temp: number | null;
-  onAir?: () => void;
-  onBody?: () => void;
 }) {
   const f = fan ?? "auto";
+  const wf = on && windFree;
   const style = { "--flow": `${SPEED[f] ?? 3.2}s` } as React.CSSProperties;
-  const cls = ["ac", on ? "is-on" : "is-off", windFree && on ? "is-windfree" : "", `swing-${swing ?? "fixed"}`, `fan-${f}`].join(" ");
+  const cls = ["ac", on ? "is-on" : "is-off", wf ? "is-windfree" : "", `swing-${swing ?? "fixed"}`].join(" ");
 
   return (
-    <div className={cls} style={style}>
-      <div className="ac-body" onClick={onBody} aria-hidden>
+    <div className={cls} style={style} aria-hidden>
+      <div className="ac-body">
         <div className="ac-top" />
         <div className="ac-front">
           <div className="ac-holes" />
-          <div className={`ac-display ${display && on ? "lit" : ""}`}>{temp ?? ""}</div>
+          <div className={`ac-display ${display && on ? "lit" : ""}`}>
+            {wf && <span className="ac-display-wf" />}
+            {temp ?? ""}
+          </div>
         </div>
         <div className="ac-bottom">
-          {/* key: re-mount on change so the louver "settles" visibly */}
-          <div className="ac-louver" key={swing ?? "fixed"} />
+          <div className="ac-louver" key={`${swing}-${wf}`} />
         </div>
       </div>
 
-      <svg className="ac-air" viewBox="0 0 300 170" preserveAspectRatio="xMidYMin meet" onClick={onAir} aria-hidden>
+      <svg className="ac-air" viewBox="0 0 300 170" preserveAspectRatio="xMidYMin meet">
         <defs>
           <radialGradient id="cool" cx="50%" cy="0%" r="75%">
             <stop offset="0%" stopColor="var(--stream)" stopOpacity="0.55" />
             <stop offset="100%" stopColor="var(--stream)" stopOpacity="0" />
           </radialGradient>
         </defs>
-        {/* invisible hit area so the whole air cone is tappable */}
-        <rect x="0" y="0" width="300" height="170" fill="transparent" />
         <path className="air-glow" d="M70 0 L230 0 L300 170 L0 170 Z" fill="url(#cool)" />
-        {/* key: a new set of streams on every fan change, with a short gust */}
         <g className="air-streams" key={f}>
-          {streams(COUNT[f] ?? 5).map((x, i) => (
+          {spread(COUNT[f] ?? 5).map((x, i) => (
             <path
               key={x}
               className="stream"
@@ -73,18 +76,20 @@ export function AcUnit({
             />
           ))}
         </g>
-        <g className="air-mist">
-          {Array.from({ length: 26 }, (_, i) => (
-            <circle
-              key={i}
-              className="mote"
-              cx={60 + ((i * 37) % 180)}
-              cy={6}
-              r={i % 3 === 0 ? 1.6 : 1.1}
-              style={{ animationDelay: `${-(i * 0.47) % 6}s`, "--drift": `${((i * 13) % 30) - 15}px` } as React.CSSProperties}
-            />
-          ))}
-        </g>
+      </svg>
+
+      {/* WindFree: mist from the front panel, drifting down past the unit */}
+      <svg className="ac-mist" viewBox="0 0 272 250" preserveAspectRatio="xMidYMin meet">
+        {MOTES.map((m, i) => (
+          <circle
+            key={i}
+            className="mote"
+            cx={m.x}
+            cy={m.y}
+            r={m.r}
+            style={{ animationDelay: `${m.delay}s`, "--drift": `${m.drift}px` } as React.CSSProperties}
+          />
+        ))}
       </svg>
     </div>
   );

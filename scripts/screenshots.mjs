@@ -1,7 +1,7 @@
 // Takes README screenshots of the app in simulation mode.
-// Usage: AC_MOCK=1 npm run dev   (in another terminal)
+// Usage: AC_MOCK=1 AC_API_KEY=preview npm run dev   (in another terminal)
 //        node scripts/screenshots.mjs [baseUrl] [key] [outDir]
-// Needs Playwright, e.g. from refresher/: NODE_PATH=refresher/node_modules
+// Uses the Playwright installed in refresher/.
 import { createRequire } from "node:module";
 import path from "node:path";
 
@@ -16,30 +16,28 @@ const browser = await chromium.launch();
 const ctx = await browser.newContext({ ...devices["iPhone 14"], locale: "en-US" });
 const page = await ctx.newPage();
 await page.request.post(`${base}/api/session`, { data: { key } });
+const setState = (state) => page.request.post(`${base}/api/ac`, { data: state, headers: { "x-ac-key": key } });
 
-async function shot(name, sky, setup) {
+const NORMAL = { power: "on", mode: "cool", temp: 24, windFree: false, fan: "high", swing: "vertical", display: true };
+
+async function shot(name, sky, state, after) {
+  await setState(state);
   await page.goto(`${base}/?sky=${sky}`, { waitUntil: "networkidle" });
   await page.waitForSelector(".temp-num");
-  await page.waitForTimeout(800);
-  if (setup) await setup();
-  await page.waitForTimeout(2600); // let the sky cross-fade and the air animate
+  if (after) await after();
+  await page.waitForTimeout(3000); // let the sky cross-fade and the air animate
   await page.screenshot({ path: `${out}/${name}.png` });
   console.log("saved", name);
 }
 
-await shot("sunset", "sunset");
-await shot("day", "day");
-await shot("night", "night");
-await shot("windfree", "sunset", async () => {
-  await page.getByRole("switch", { name: /WindFree/ }).click();
-});
-await shot("schedule", "day", async () => {
-  await page.getByRole("button", { name: "Add" }).click();
-});
-await shot("full", "sunset", async () => {
-  await page.evaluate(() => localStorage.removeItem("air:hinted"));
-  await page.reload({ waitUntil: "networkidle" });
+await shot("sunset", "sunset", NORMAL);
+await shot("day", "day", { ...NORMAL, fan: "medium", swing: "fixed" });
+await shot("night", "night", { ...NORMAL, fan: "low", swing: "horizontal" });
+await shot("windfree", "sunset", { ...NORMAL, windFree: true, fan: "auto" });
+await shot("schedule", "day", NORMAL, () => page.getByRole("button", { name: "Add" }).click());
+await shot("full", "sunset", NORMAL, async () => {
   await page.getByRole("button", { name: "Details" }).click();
-  await page.setViewportSize({ width: 390, height: 1500 });
+  await page.setViewportSize({ width: 390, height: 1560 });
 });
+await setState(NORMAL);
 await browser.close();
