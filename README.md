@@ -91,3 +91,7 @@ Open http://localhost:3000 with the key `preview`. `?sky=night` (or `dawn`, `day
 a sky. Screenshots: `node scripts/screenshots.mjs` while the dev server runs.
 
 Device-specific mappings (capability names, the display workaround) live in `lib/capabilities.ts`.
+
+## License
+
+MIT
