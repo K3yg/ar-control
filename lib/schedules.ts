@@ -32,6 +32,11 @@ export type NewSchedule = z.infer<typeof newScheduleSchema>;
 export type Schedule = NewSchedule & { id: string; paused?: boolean };
 
 const DEV_KEY = "dev:schedules";
+export const LAST_RUN_KEY = "schedules:lastRun";
+
+export async function lastRun() {
+  return (await redis().get<{ at: number; time: string }>(LAST_RUN_KEY)) ?? null;
+}
 
 function qstash() {
   const token = process.env.QSTASH_TOKEN;

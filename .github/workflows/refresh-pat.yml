@@ -1,8 +1,8 @@
-name: Gerar token SmartThings
+name: Refresh SmartThings token
 
 on:
   schedule:
-    - cron: "23 */12 * * *" # a cada 12h (o token dura 24h)
+    - cron: "23 */12 * * *" # every 12h (tokens last 24h)
   workflow_dispatch:
 
 concurrency:

@@ -1,8 +1,8 @@
 import { protectedRoute } from "@/lib/ac";
-import { TIMEZONE, createSchedule, listSchedules, newScheduleSchema } from "@/lib/schedules";
+import { TIMEZONE, createSchedule, lastRun, listSchedules, newScheduleSchema } from "@/lib/schedules";
 
 export const GET = protectedRoute(async () =>
-  Response.json({ timezone: TIMEZONE, schedules: await listSchedules() }),
+  Response.json({ timezone: TIMEZONE, schedules: await listSchedules(), lastRun: await lastRun() }),
 );
 
 export const POST = protectedRoute(async (req: Request) => {

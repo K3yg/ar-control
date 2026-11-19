@@ -1,6 +1,7 @@
 import { applyPreset, applyState } from "@/lib/ac";
 import { errorResponse } from "@/lib/errors";
-import { deleteScheduleById, newScheduleSchema, verifyQstash } from "@/lib/schedules";
+import { redis } from "@/lib/redis";
+import { LAST_RUN_KEY, deleteScheduleById, newScheduleSchema, verifyQstash } from "@/lib/schedules";
 
 /** Called by QStash at the scheduled time. Authenticated by the QStash signature, not the app key. */
 export async function POST(req: Request) {
@@ -24,5 +25,7 @@ export async function POST(req: Request) {
     const id = req.headers.get("upstash-schedule-id");
     if (s.once && id) await deleteScheduleById(id).catch(() => {});
   }
+  await redis().set(LAST_RUN_KEY, { at: Date.now(), time: s.time, action: s.action });
+  console.log("[schedule] ran", s.time);
   return Response.json({ ok: true });
 }

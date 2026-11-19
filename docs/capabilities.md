@@ -1,27 +1,23 @@
-# Capabilities do aparelho
+# Device capabilities
 
-O mapeamento usado pelo código está em `lib/capabilities.ts`. Depois de conectar o SmartThings,
-abra `GET /api/debug` (logado no app ou com o header `x-ac-key`) para ver os aparelhos da conta, o
-aparelho escolhido, as capabilities do componente `main` e o status bruto.
+Mappings live in `lib/capabilities.ts`. `GET /api/debug` shows the account's devices, the chosen
+device, its capabilities and the raw status. Confirmed on a Samsung WindFree (Room air conditioner):
 
-| Função      | Capability                          | Comando                          | Status confirmado? |
-|-------------|-------------------------------------|----------------------------------|--------------------|
-| Liga/desliga| `switch`                            | `on` / `off`                     | ☐ |
-| Temperatura | `thermostatCoolingSetpoint`         | `setCoolingSetpoint(25)`         | ☐ |
-| Modo        | `airConditionerMode`                | `setAirConditionerMode("cool")`  | ☐ |
-| WindFree    | `custom.airConditionerOptionalMode` | `setAcOptionalMode("windFree")` / `("off")` | ☐ (ver `supportedAcOptionalMode`) |
-| Display     | `samsungce.airConditionerLighting` **ou** `execute` | `on`/`off` **ou** `execute("mode/vs/0", {"x.com.samsung.da.options": ["Light_On"]})` | ☐ |
+| Feature | Capability | Command | Values |
+|---|---|---|---|
+| Power | `switch` | `on` / `off` | |
+| Temperature | `thermostatCoolingSetpoint` | `setCoolingSetpoint(n)` | 16–30 (`custom.thermostatSetpointControl`) |
+| Mode | `airConditionerMode` | `setAirConditionerMode(m)` | `auto`, `cool`, `dry`, `wind` |
+| Fan speed | `airConditionerFanMode` | `setFanMode(f)` | `auto`, `low`, `medium`, `high`, `turbo` |
+| Airflow | `fanOscillationMode` | `setFanOscillationMode(s)` | `fixed`, `vertical`, `horizontal`, `all` |
+| WindFree & co. | `custom.airConditionerOptionalMode` | `setAcOptionalMode(o)` | `off`, `windFree`, `windFreeSleep`, `sleep`, `quiet`, `smart`, `speed` |
+| Display | `samsungce.airConditionerLighting` | `on` / `off` | |
+| Humidity | `relativeHumidityMeasurement` | | read only |
+| Power use | `powerConsumptionReport` | | read only (W, Wh) |
 
-## Display
+Notes:
 
-A estratégia é escolhida sozinha (`AC_DISPLAY_STRATEGY=auto`): usa `samsungce.airConditionerLighting`
-se o aparelho tiver, senão o hack via `execute`. No hack, `Light_On` **desliga** o display (nome invertido).
-Para forçar uma delas, defina `AC_DISPLAY_STRATEGY` como `lighting`, `execute` ou `none`.
-
-Com `execute` o aparelho não informa o estado do display; o app mostra o último valor enviado.
-
-## Anotações do aparelho real
-
-- deviceId:
-- `supportedAcOptionalMode`:
-- Display funcionou com:
+- While WindFree is on, `availableAcFanModes` is only `auto`. The app turns WindFree off before setting a fan speed.
+- WindFree only works in `cool`; the app switches to cool when enabling it.
+- Units without `samsungce.airConditionerLighting` can use the community workaround through `execute`
+  (`AC_DISPLAY_STRATEGY=execute`). Its naming is inverted: `Light_On` turns the display **off**.

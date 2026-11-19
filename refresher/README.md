@@ -1,49 +1,50 @@
 # refresher
 
-Gera **Personal Access Tokens (PAT)** do SmartThings automaticamente. Os PATs expiram em 24h e,
-desde nov/2026, apps OAuth exigem plano pago. Este robô reaproveita uma sessão da sua conta Samsung
-para criar um PAT novo a cada execução e entregá-lo a uma URL sua.
+Creates SmartThings **personal access tokens (PATs)** automatically. PATs expire after 24 hours, and
+since November 2026 SmartThings OAuth apps require a paid plan. This robot reuses a signed-in Samsung
+session to create a new PAT on every run and send it to a URL of yours.
 
-- Não guarda senha: você loga **uma vez**, à mão (captcha incluso), e só a sessão (cookies) é salva.
-- A sessão é **criptografada** com AES-256-GCM usando `SESSION_KEY`, que só o robô conhece.
-  O servidor que armazena o blob não consegue lê-lo.
-- Cada execução renova os cookies, mantendo a sessão viva.
+- **No password stored.** You sign in **once**, by hand (captcha included); only the session cookies are kept.
+- **Encrypted session.** It's encrypted with AES-256-GCM using `SESSION_KEY`, which only the robot
+  knows. The server that stores the blob can't read it.
+- **Self-renewing.** Each run renews the cookies, which keeps the session alive.
+- **Backend-agnostic.** It only needs two HTTP endpoints, so it works with any app, not just this one.
 
-## Configuração (variáveis de ambiente)
+## Configuration
 
-| Variável | Obrigatória | Descrição |
+| Variable | Required | Description |
 |---|---|---|
-| `APP_URL` | sim* | Base do app. Padrões: `APP_URL/api/pat` e `APP_URL/api/refresher/session` |
-| `APP_KEY` | sim | Enviado no header `x-ac-key` |
-| `SESSION_KEY` | sim | 32 bytes em base64: `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` |
-| `PAT_TARGET_URL` | não | Recebe `POST { "token": "..." }` |
-| `SESSION_STORE_URL` | não | `GET` → `{ "blob": string \| null }`, `PUT { "blob": string }` |
-| `PAT_SCOPES` | não | Padrão `l:devices,r:devices:*,w:devices:*,x:devices:*` |
-| `PAT_NAME_PREFIX` | não | Padrão `robo` |
+| `APP_URL` | yes* | App base URL. Defaults to `APP_URL/api/pat` and `APP_URL/api/refresher/session` |
+| `APP_KEY` | yes | Sent in the `x-ac-key` header |
+| `SESSION_KEY` | yes | 32 bytes, base64: `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` |
+| `PAT_TARGET_URL` | no | Receives `POST { "token": "..." }` |
+| `SESSION_STORE_URL` | no | `GET` → `{ "blob": string \| null }`, `PUT { "blob": string }` |
+| `PAT_SCOPES` | no | Default `l:devices,r:devices:*,w:devices:*,x:devices:*` |
+| `PAT_NAME_PREFIX` | no | Default `refresher` |
 
-\* ou `PAT_TARGET_URL` + `SESSION_STORE_URL`, para usar com qualquer outro backend.
+\* or `PAT_TARGET_URL` + `SESSION_STORE_URL` to use another backend.
 
-## Uso
+## Use
 
 ```bash
 cd refresher
 npm install && npx playwright install chromium
-cp .env.example .env   # preencha
-npm run login          # uma vez: abre o navegador, você loga, a sessão é salva
-npm start              # gera e entrega um token
+cp .env.example .env   # fill it in
+npm run login          # once: a browser opens, you sign in, the session is saved
+npm start              # creates and delivers a token
 ```
 
-## Rodando todo dia (GitHub Actions)
+## Run it every 12 hours (GitHub Actions)
 
-O workflow `.github/workflows/refresh-pat.yml` roda a cada 12h. Configure os secrets do repositório
-(`APP_URL`, `APP_KEY`, `SESSION_KEY`), por exemplo com `gh secret set -f refresher/.env`.
-Também dá para rodar na mão em *Actions → Gerar token SmartThings → Run workflow*.
+`.github/workflows/refresh-pat.yml` runs every 12 hours. Add the repository secrets `APP_URL`,
+`APP_KEY` and `SESSION_KEY`, for example with `gh secret set -f refresher/.env`.
+You can also run it by hand: *Actions → Refresh SmartThings token → Run workflow*.
 
-## Quando a sessão cair
+## When the session runs out
 
-O robô sai com código 4 ("Sessão expirada") e o GitHub te manda e-mail da falha. Rode
-`npm run login` de novo no seu computador. Enquanto isso, o app aceita um token colado à mão.
+The robot exits with code 4 ("Session expired") and GitHub emails you about the failed run.
+Run `npm run login` again on your computer. Meanwhile the app accepts a token pasted by hand.
 
-## Códigos de saída
+## Exit codes
 
-`2` configuração · `3` sem sessão · `4` sessão expirada · `5` criação do token falhou · `6` token não encontrado na resposta
+`2` configuration · `3` no saved session · `4` session expired · `5` token creation failed · `6` no token in the response
