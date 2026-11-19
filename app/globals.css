@@ -388,3 +388,5 @@ a { color: inherit; }
 .fan-spin { transform-origin: 12px 12px; animation: spin var(--spin, 1.4s) linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .fan-badge { fill: var(--glass-strong); stroke: currentColor; stroke-width: 0.9; }
+.remember { display: flex; align-items: center; gap: 10px; font-size: 15px; color: var(--muted); }
+.remember input { width: 18px; height: 18px; accent-color: var(--ink); }

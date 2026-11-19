@@ -35,8 +35,20 @@ export default function Home() {
     toastTimer.current = setTimeout(() => setToast(null), 3200);
   }, []);
 
+  const relogged = useRef(false);
   const handleAuthError = useCallback((data: Record<string, unknown> | undefined) => {
-    if (data?.error === "unauthorized") return setScreen("locked"), true;
+    if (data?.error === "unauthorized") {
+      // "Remember this device": sign in again silently with the saved key, once.
+      const saved = localStorage.getItem("air:key");
+      if (saved && !relogged.current) {
+        relogged.current = true;
+        api("/api/session", { method: "POST", body: JSON.stringify({ key: saved }) })
+          .then(() => location.reload())
+          .catch(() => (localStorage.removeItem("air:key"), setScreen("locked")));
+        return true;
+      }
+      return setScreen("locked"), true;
+    }
     if (data?.needsReauth) {
       setReason((data.reason as string) ?? (data.message as string) ?? null);
       return setScreen("reauth"), true;
@@ -389,6 +401,7 @@ function Unlock({ onDone }: { onDone: () => void }) {
   const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(false);
+  const [remember, setRemember] = useState(true);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -398,8 +411,11 @@ function Unlock({ onDone }: { onDone: () => void }) {
       .then(() => true)
       .catch(() => false);
     setBusy(false);
-    if (ok) onDone();
-    else setErr(true);
+    if (ok) {
+      if (remember) localStorage.setItem("air:key", key.trim());
+      else localStorage.removeItem("air:key");
+      onDone();
+    } else setErr(true);
   };
 
   return (
@@ -409,8 +425,12 @@ function Unlock({ onDone }: { onDone: () => void }) {
       </header>
       <form className="center" onSubmit={submit}>
         <h1 className="center-title">Unlock</h1>
-        <p>Enter the access key. This device will remember it.</p>
+        <p>Enter the access key.</p>
         <input className="field" type="password" autoComplete="current-password" placeholder="Access key" value={key} onChange={(e) => setKey(e.target.value)} autoFocus />
+        <label className="remember">
+          <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+          Remember this device
+        </label>
         {err && <span className="err">That key didn't work.</span>}
         <button className="btn" disabled={busy || !key}>
           {busy ? "Checking…" : "Unlock"}

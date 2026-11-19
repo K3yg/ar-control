@@ -1,4 +1,6 @@
-import { applyPreset, applyState, protectedRoute, readStatus } from "@/lib/ac";
+import { applyPreset, applyState, readStatus } from "@/lib/ac";
+import { checkKey, isAuthorized } from "@/lib/auth";
+import { redis } from "@/lib/redis";
 import type { AcStatus } from "@/lib/capabilities";
 import type { DesiredState } from "@/lib/schema";
 import { createSchedule, listSchedules } from "@/lib/schedules";
@@ -10,6 +12,8 @@ import { createSchedule, listSchedules } from "@/lib/schedules";
  *   /api/siri/swing/vertical    /api/siri/windfree/on   /api/siri/display/off
  *   /api/siri/preset/sleep      /api/siri/schedules     /api/siri/schedule/off/04:00[/once]
  * Answers in English; add ?lang=pt for Portuguese.
+ * Auth: the x-ac-key header, or ?key=<AC_API_KEY> in the URL (simplest for Shortcuts).
+ * /api/siri/log lists the last calls, including rejected ones, to debug shortcuts.
  */
 
 type Lang = "en" | "pt";
@@ -114,6 +118,11 @@ async function handle(req: Request, ctx: { params: Promise<{ cmd: string[] }> })
       await createSchedule({ time, days: [], once, action });
       return say(L.scheduled(arg, time, once));
     }
+    case "log": {
+      const hits = (await redis().get<Hit[]>(LOG_KEY)) ?? [];
+      if (!hits.length) return say("No Siri calls yet.");
+      return say(hits.map((h) => `${new Date(h.at).toISOString().slice(5, 19).replace("T", " ")} UTC  ${h.ok ? "ok " : "401"}  ${h.path}  ${h.ua}`).join("\n"));
+    }
     default:
       return say(L.unknown, 404);
   }
@@ -129,5 +138,27 @@ async function speak(req: Request, ctx: { params: Promise<{ cmd: string[] }> }) 
   }
 }
 
-export const GET = protectedRoute(speak);
-export const POST = protectedRoute(speak);
+type Hit = { at: number; path: string; ok: boolean; ua: string };
+const LOG_KEY = "siri:log";
+
+async function logHit(hit: Hit) {
+  try {
+    const list = (await redis().get<Hit[]>(LOG_KEY)) ?? [];
+    await redis().set(LOG_KEY, [hit, ...list].slice(0, 20));
+  } catch {
+    // logging must never break a command
+  }
+}
+
+async function entry(req: Request, ctx: { params: Promise<{ cmd: string[] }> }) {
+  const url = new URL(req.url);
+  const ok = isAuthorized(req) || checkKey(url.searchParams.get("key"));
+  if (!url.pathname.endsWith("/log")) {
+    await logHit({ at: Date.now(), path: url.pathname, ok, ua: (req.headers.get("user-agent") ?? "").slice(0, 40) });
+  }
+  if (!ok) return say("The access key is missing or wrong. Check the key in the shortcut.", 401);
+  return speak(req, ctx);
+}
+
+export const GET = entry;
+export const POST = entry;
