@@ -3,9 +3,11 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Gera um Personal Access Token do SmartThings logando na conta Samsung e entrega para uma URL configurável",
+  "description": "Gera Personal Access Tokens do SmartThings automaticamente reaproveitando uma sessão da conta Samsung",
+  "engines": { "node": ">=22" },
   "scripts": {
-    "start": "node refresh.mjs"
+    "login": "node --env-file-if-exists=.env login.mjs",
+    "start": "node --env-file-if-exists=.env refresh.mjs"
   },
   "dependencies": {
     "playwright": "^1"

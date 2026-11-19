@@ -1,0 +1,32 @@
+name: Gerar token SmartThings
+
+on:
+  schedule:
+    - cron: "23 */12 * * *" # a cada 12h (o token dura 24h)
+  workflow_dispatch:
+
+concurrency:
+  group: refresh-pat
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: refresher
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: refresher/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm start
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          APP_KEY: ${{ secrets.APP_KEY }}
+          SESSION_KEY: ${{ secrets.SESSION_KEY }}
