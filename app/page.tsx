@@ -41,8 +41,8 @@ export default function Home() {
     if (!force && Date.now() < quietUntil.current) return;
     try {
       const res = await fetch("/api/ac", { cache: "no-store" });
-      if (res.status === 401) return setPhase("locked");
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (data.error === "unauthorized") return setPhase("locked");
       if (data.needsReauth) {
         setReauthReason(data.reason ?? null);
         return setPhase("reauth");
@@ -87,9 +87,12 @@ export default function Home() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
-        if (res.status === 401) return setPhase("locked");
         const data = await res.json().catch(() => ({}));
-        if (data.needsReauth) return setPhase("reauth");
+        if (data.error === "unauthorized") return setPhase("locked");
+        if (data.needsReauth) {
+          setReauthReason(data.message ?? null);
+          return setPhase("reauth");
+        }
         if (!res.ok) throw new Error(data.message ?? "Comando falhou");
         setTimeout(() => load(true), 6000);
       } catch (e) {
@@ -145,12 +148,13 @@ export default function Home() {
       </header>
 
       {phase === "reauth" ? (
-        <div className="center">
-          <p>{reauthReason === "Nenhum login feito" ? "Conecte sua conta SmartThings para começar." : "O acesso ao SmartThings expirou."}</p>
-          <a className="btn" href="/api/auth/login">
-            Reconectar SmartThings
-          </a>
-        </div>
+        <PatForm
+          reason={reauthReason}
+          onDone={() => {
+            flash("Token salvo");
+            load(true);
+          }}
+        />
       ) : (
         <>
           <section className="temp">
@@ -203,9 +207,6 @@ export default function Home() {
       <div className="spacer" />
       <footer className="foot">
         <span className="meta">{status?.mode && on ? status.mode : ""}</span>
-        <a className="link" href="/api/auth/login">
-          reconectar
-        </a>
       </footer>
 
       {toast && <div className="toast">{toast}</div>}
@@ -229,6 +230,54 @@ function Row({
       <span className="row-label">{label}</span>
       <span className={`toggle ${value ? "on" : ""} ${value === null ? "unknown" : ""}`} />
     </button>
+  );
+}
+
+function PatForm({ reason, onDone }: { reason: string | null; onDone: () => void }) {
+  const [token, setToken] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setErr(null);
+    const res = await fetch("/api/pat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: token.trim() }),
+    }).catch(() => null);
+    const data = await res?.json().catch(() => ({}));
+    setBusy(false);
+    if (res?.ok) {
+      setToken("");
+      onDone();
+    } else setErr(data?.message ?? "Falhou");
+  };
+
+  return (
+    <form className="center" onSubmit={submit}>
+      <p>
+        {reason && reason !== "Nenhum login feito" ? reason : "Cole um token do SmartThings para conectar."}{" "}
+        Gere em{" "}
+        <a className="link" href="https://account.smartthings.com/tokens" target="_blank" rel="noreferrer">
+          account.smartthings.com/tokens
+        </a>{" "}
+        com as permissões de Devices.
+      </p>
+      <input
+        className="field"
+        placeholder="token"
+        autoComplete="off"
+        spellCheck={false}
+        value={token}
+        onChange={(e) => setToken(e.target.value)}
+      />
+      {err && <span className="meta err">{err}</span>}
+      <button className="btn" disabled={busy || !token}>
+        {busy ? "…" : "Salvar"}
+      </button>
+    </form>
   );
 }
 

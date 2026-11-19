@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { env, ST_OAUTH } from "./env";
 import { AcError } from "./errors";
+import { invalidatePat, readPat } from "./pat";
 import { redis } from "./redis";
 
 const KEY = "st:tokens";
@@ -21,9 +22,6 @@ class TokenHttpError extends Error {
     super(message);
   }
 }
-
-/** Só para teste local: token pessoal do SmartThings (expira em 24h). Ignorado em produção. */
-const devPat = process.env.NODE_ENV !== "production" ? process.env.ST_PAT : undefined;
 
 const sleep =(ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -83,7 +81,7 @@ export async function exchangeCode(code: string) {
 
 /** Motivo pelo qual é preciso reconectar, ou null se está tudo certo. */
 export async function needsReauth(): Promise<string | null> {
-  if (devPat) return null;
+  if (await readPat()) return null;
   const flag = await redis().get<string>(REAUTH);
   if (flag) return flag;
   return (await readTokens()) ? null : "Nenhum login feito";
@@ -139,7 +137,8 @@ async function refresh(since: number): Promise<Tokens> {
 }
 
 export async function getValidAccessToken(): Promise<string> {
-  if (devPat) return devPat;
+  const pat = await readPat();
+  if (pat) return pat;
   const t = await readTokens();
   if (!t) throw new AcError("needs_reauth", "Nenhum login feito", 401);
   const life = t.expiresAt - t.refreshedAt;
@@ -148,7 +147,12 @@ export async function getValidAccessToken(): Promise<string> {
 }
 
 export async function forceRefresh(): Promise<Tokens> {
-  if (devPat) throw new AcError("needs_reauth", "ST_PAT inválido ou expirado (dura 24h)", 401);
+  if (await readPat()) {
+    // PAT não renova: descarta e pede um novo.
+    await invalidatePat();
+    await redis().set(REAUTH, "O token da Samsung expirou. Cole um novo.");
+    throw new AcError("needs_reauth", "O token da Samsung expirou. Cole um novo.", 401);
+  }
   const t = await readTokens();
   if (!t) throw new AcError("needs_reauth", "Nenhum login feito", 401);
   return refresh(t.refreshedAt);

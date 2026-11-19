@@ -1,0 +1,13 @@
+{
+  "name": "smartthings-pat-refresher",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Gera um Personal Access Token do SmartThings logando na conta Samsung e entrega para uma URL configurável",
+  "scripts": {
+    "start": "node refresh.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1"
+  }
+}
