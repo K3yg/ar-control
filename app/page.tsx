@@ -22,6 +22,8 @@ export default function Home() {
   const [reason, setReason] = useState<string | null>(null);
   const [details, setDetails] = useState(false);
   const [sheet, setSheet] = useState<"presets" | "schedules" | null>(null);
+  const [hinted, setHinted] = useState(true);
+  useEffect(() => setHinted(localStorage.getItem("air:hinted") === "1"), []);
 
   const quietUntil = useRef(0); // the cloud takes a few seconds to reflect a command
   const tempTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -145,6 +147,31 @@ export default function Home() {
   const on = status?.power === "on";
   const windFree = !!status?.windFree;
 
+  const markHinted = () => {
+    if (hinted) return;
+    setHinted(true);
+    localStorage.setItem("air:hinted", "1");
+  };
+
+  const next = (list: string[], current: string | null) => list[(list.indexOf(current ?? "") + 1) % list.length];
+
+  /** Tap the air: next fan speed. WindFree locks the fan, so explain instead of fighting it. */
+  const cycleFan = () => {
+    if (!status || !on || !status.fanModes.length) return;
+    markHinted();
+    if (windFree) return flash("WindFree keeps the fan on auto. Turn WindFree off to pick a speed.");
+    const f = next(status.fanModes, status.fanMode);
+    apply({ fanMode: f }, { fan: f });
+  };
+
+  /** Tap the AC: next airflow direction. */
+  const cycleSwing = () => {
+    if (!status || !on || !status.swingModes.length) return;
+    markHinted();
+    const s = next(status.swingModes, status.swing);
+    apply({ swing: s }, { swing: s });
+  };
+
   return (
     <div className={`root phase-${phase}`}>
       <Sky phase={phase} />
@@ -171,7 +198,22 @@ export default function Home() {
                   windFree={windFree}
                   display={status?.display ?? true}
                   temp={status?.targetTemp ?? null}
+                  onAir={cycleFan}
+                  onBody={cycleSwing}
                 />
+                {status && on && (
+                  <div className="ac-caption">
+                    <button onClick={cycleFan} aria-label="Change fan speed">
+                      {windFree ? "WindFree" : `Fan ${(FAN_LABEL[status.fanMode ?? ""] ?? status.fanMode ?? "").toLowerCase()}`}
+                    </button>
+                    <button onClick={cycleSwing} aria-label="Change airflow direction">
+                      {SWING_LABEL[status.swing ?? ""] ?? status.swing}
+                    </button>
+                  </div>
+                )}
+                {status && on && !hinted && (
+                  <p className="ac-hint">Tap the air to change the fan, the AC to change the airflow.</p>
+                )}
               </section>
 
               <section className="temp">
@@ -200,31 +242,23 @@ export default function Home() {
                 </button>
               </div>
 
+              <section className="group first">
+                <div className="group-head">
+                  <span>Presets</span>
+                  <button className="link" onClick={() => setSheet("presets")}>
+                    Edit
+                  </button>
+                </div>
+                <div className="chips">
+                  {presets.map((p) => (
+                    <button key={p.id} className="chip" disabled={!status} onClick={() => runPreset(p)}>
+                      {p.name}
+                    </button>
+                  ))}
+                </div>
+              </section>
+
               <section className={`controls ${on ? "" : "inert"}`}>
-                <Choice
-                  label="Mode"
-                  options={status?.modes ?? []}
-                  value={status?.mode ?? null}
-                  names={MODE_LABEL}
-                  onPick={(m) => apply({ mode: m, ...(m !== "cool" ? { windFree: false } : {}) }, { mode: m })}
-                />
-                <Choice
-                  label="Fan"
-                  options={status?.fanModes ?? []}
-                  value={status?.fanMode ?? null}
-                  names={FAN_LABEL}
-                  note={windFree ? "WindFree keeps the fan on auto. Picking a speed turns it off." : undefined}
-                  onPick={(f) =>
-                    apply({ fanMode: f, ...(f !== "auto" && windFree ? { windFree: false } : {}) }, { fan: f })
-                  }
-                />
-                <Choice
-                  label="Airflow"
-                  options={status?.swingModes ?? []}
-                  value={status?.swing ?? null}
-                  names={SWING_LABEL}
-                  onPick={(s) => apply({ swing: s }, { swing: s })}
-                />
                 <Switch
                   label="WindFree"
                   hint="Cools without direct wind"
@@ -241,20 +275,14 @@ export default function Home() {
                 />
               </section>
 
-              <section className="group">
-                <div className="group-head">
-                  <span>Presets</span>
-                  <button className="link" onClick={() => setSheet("presets")}>
-                    Edit
-                  </button>
-                </div>
-                <div className="chips">
-                  {presets.map((p) => (
-                    <button key={p.id} className="chip" disabled={!status} onClick={() => runPreset(p)}>
-                      {p.name}
-                    </button>
-                  ))}
-                </div>
+              <section className={`group ${on ? "" : "inert"}`}>
+                <Choice
+                  label="Mode"
+                  options={status?.modes ?? []}
+                  value={status?.mode ?? null}
+                  names={MODE_LABEL}
+                  onPick={(m) => apply({ mode: m, ...(m !== "cool" ? { windFree: false } : {}) }, { mode: m })}
+                />
               </section>
 
               <Schedules presets={presets} flash={flash} open={sheet === "schedules"} onOpen={() => setSheet("schedules")} onClose={() => setSheet(null)} />

@@ -37,6 +37,8 @@ await shot("schedule", "day", async () => {
   await page.getByRole("button", { name: "Add" }).click();
 });
 await shot("full", "sunset", async () => {
+  await page.evaluate(() => localStorage.removeItem("air:hinted"));
+  await page.reload({ waitUntil: "networkidle" });
   await page.getByRole("button", { name: "Details" }).click();
   await page.setViewportSize({ width: 390, height: 1500 });
 });
