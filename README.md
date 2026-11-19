@@ -1,7 +1,14 @@
 # Ar
 
-Controle pessoal do ar Samsung WindFree via SmartThings: PWA, Siri (Atalhos) e refresh OAuth automático.
-Next.js na Vercel + Upstash Redis para os tokens.
+Controle pessoal do ar Samsung WindFree via SmartThings: PWA, Siri (Atalhos) e token renovado sozinho.
+Next.js na Vercel + Upstash Redis.
+
+Duas partes independentes:
+- **app** (raiz): web app + API do ar. Recebe o token do SmartThings em `POST /api/pat`.
+- **[refresher/](refresher/)**: robô que gera um token novo a cada 12h (GitHub Actions) e entrega ao app.
+
+> Desde nov/2026 apps OAuth do SmartThings exigem plano pago. O app ainda suporta OAuth
+> (rotas `/api/auth/*`), mas o caminho padrão é PAT + refresher.
 
 ## Setup (uma vez)
 
