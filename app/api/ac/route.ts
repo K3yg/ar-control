@@ -1,9 +1,11 @@
 import { applyState, protectedRoute } from "@/lib/ac";
+import { isMock, mockStatus } from "@/lib/mock";
 import { desiredStateSchema } from "@/lib/schema";
 import { getStatus } from "@/lib/smartthings";
 import { needsReauth } from "@/lib/tokens";
 
 export const GET = protectedRoute(async () => {
+  if (isMock) return Response.json({ needsReauth: false, ...(await mockStatus()) });
   const reason = await needsReauth();
   if (reason) return Response.json({ needsReauth: true, reason });
   return Response.json({ needsReauth: false, ...(await getStatus()) });
