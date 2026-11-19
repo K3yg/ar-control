@@ -2,8 +2,8 @@ import { protectedRoute } from "@/lib/ac";
 import { redis } from "@/lib/redis";
 
 /**
- * Guarda a sessão do refresher/ (cookies da conta Samsung) já CRIPTOGRAFADA pelo robô.
- * O app nunca vê o conteúdo: a chave (SESSION_KEY) fica só com o robô.
+ * Stores the refresher/ session (Samsung account cookies), already ENCRYPTED by the robot.
+ * The app never sees the content: the key (SESSION_KEY) lives only with the robot.
  */
 const KEY = "refresher:session";
 const MAX = 512 * 1024;

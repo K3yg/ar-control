@@ -4,15 +4,15 @@ type Store = Pick<Redis, "get" | "set" | "del" | "eval">;
 
 let client: Store | undefined;
 
-// Aceita tanto os nomes UPSTASH_* quanto os KV_* que a integração da Vercel cria.
-// Em dev, sem Redis configurado, usa um store em memória.
+// Accepts both UPSTASH_* and the KV_* names the Vercel integration creates.
+// In dev without Redis, falls back to an in-memory store.
 export function redis(): Store {
   if (!client) {
     const url = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
     const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
     if (url && token) client = new Redis({ url, token });
     else if (process.env.NODE_ENV !== "production") client = memoryStore();
-    else throw new Error("Redis não configurado (UPSTASH_REDIS_REST_URL/TOKEN)");
+    else throw new Error("Redis is not configured (UPSTASH_REDIS_REST_URL/TOKEN)");
   }
   return client;
 }
@@ -40,7 +40,7 @@ function memoryStore(): Store {
       for (const k of keys) if (m.delete(k)) n++;
       return n;
     },
-    // Só o script de liberar lock é usado.
+    // Only the lock-release script is used.
     async eval(_s: string, keys: string[], args: unknown[]) {
       if (live(keys[0])?.v === args[0]) return m.delete(keys[0]) ? 1 : 0;
       return 0;

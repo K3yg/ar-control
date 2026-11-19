@@ -31,17 +31,17 @@ async function stFetch<T>(path: string, init: RequestInit = {}, retried = false)
     });
   } catch (e) {
     if (e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError"))
-      throw new AcError("timeout", "SmartThings não respondeu a tempo", 504);
-    throw new AcError("smartthings", "Falha de rede ao falar com o SmartThings", 502);
+      throw new AcError("timeout", "SmartThings didn't answer in time", 504);
+    throw new AcError("smartthings", "Network error talking to SmartThings", 502);
   }
 
   if (res.status === 401 && !retried) return stFetch<T>(path, init, true);
-  if (res.status === 401) throw new AcError("needs_reauth", "Token inválido. Reconecte o SmartThings.", 401);
-  if (res.status === 429) throw new AcError("rate_limited", "Muitas requisições ao SmartThings, tente em instantes", 429);
+  if (res.status === 401) throw new AcError("needs_reauth", "SmartThings rejected the token. Connect again.", 401);
+  if (res.status === 429) throw new AcError("rate_limited", "Too many requests to SmartThings. Try again in a moment.", 429);
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as { error?: { message?: string; code?: string } };
-    const msg = data.error?.message ?? `SmartThings respondeu ${res.status}`;
-    if (/offline/i.test(msg)) throw new AcError("offline", "O ar está offline", 503);
+    const msg = data.error?.message ?? `SmartThings answered ${res.status}`;
+    if (/offline/i.test(msg)) throw new AcError("offline", "The AC is offline", 503);
     throw new AcError("smartthings", msg, 502);
   }
   return (await res.json().catch(() => ({}))) as T;
@@ -60,7 +60,7 @@ function toInfo(d: StDevice): DeviceInfo {
   return { id: d.deviceId, label: d.label ?? d.name ?? d.deviceId, caps: main?.capabilities.map((c) => c.id) ?? [] };
 }
 
-/** Aparelho alvo: ST_DEVICE_ID, ou o primeiro com airConditionerMode. Cacheado no Redis por 1 dia. */
+/** Target device: ST_DEVICE_ID, or the first one with airConditionerMode. Cached in Redis for a day. */
 export async function getDevice(): Promise<DeviceInfo> {
   const cached = await redis().get<DeviceInfo>(DEVICE_KEY);
   if (cached && (!env.deviceId || cached.id === env.deviceId)) return cached;
@@ -71,7 +71,7 @@ export async function getDevice(): Promise<DeviceInfo> {
   } else {
     const list = await stFetch<{ items: StDevice[] }>(`/devices?capability=airConditionerMode`);
     const first = list.items?.[0];
-    if (!first) throw new AcError("no_device", "Nenhum ar-condicionado encontrado na conta", 404);
+    if (!first) throw new AcError("no_device", "No air conditioner found in this account", 404);
     info = toInfo(first);
   }
   await redis().set(DEVICE_KEY, info, { ex: 60 * 60 * 24 });
@@ -95,7 +95,7 @@ export async function getStatus(): Promise<AcStatus> {
     redis().get<boolean>(LAST_DISPLAY_KEY),
   ]);
   const status = normalizeStatus(raw, health.state !== "OFFLINE");
-  // O hack via execute não reporta o estado do display; usa o último valor enviado.
+  // The execute workaround doesn't report the display state; use the last value sent.
   if (status.display === null && typeof lastDisplay === "boolean") status.display = lastDisplay;
   return status;
 }

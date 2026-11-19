@@ -13,7 +13,7 @@ function safeEqual(a: string, b: string): boolean {
   return timingSafeEqual(ba, bb);
 }
 
-/** Valor do cookie de sessão: derivado do segredo, sem guardar o segredo em si. */
+/** Session cookie value: derived from the secret, so the secret itself is never stored. */
 export function sessionToken(): string {
   return createHmac("sha256", env.apiKey).update("ac-session-v1").digest("base64url");
 }

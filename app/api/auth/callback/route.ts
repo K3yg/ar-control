@@ -20,10 +20,10 @@ export async function GET(req: Request) {
 
   try {
     await exchangeCode(code);
-    await redis().del("st:device"); // redescobre o aparelho com o novo login
+    await redis().del("st:device"); // rediscover the device with the new login
     home.searchParams.set("auth", "ok");
   } catch (e) {
-    console.error("[auth] troca de code falhou:", e instanceof Error ? e.message : e);
+    console.error("[auth] code exchange failed:", e instanceof Error ? e.message : e);
     home.searchParams.set("auth", "error");
   }
   const res = NextResponse.redirect(home);

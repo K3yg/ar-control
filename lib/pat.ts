@@ -3,8 +3,8 @@ import { AcError } from "./errors";
 import { redis } from "./redis";
 
 /**
- * Personal Access Token do SmartThings (dura 24h). Entregue por POST /api/pat — colado na UI
- * ou enviado automaticamente pelo refresher/. Tem prioridade sobre o OAuth.
+ * SmartThings personal access token (lasts 24h). Delivered to POST /api/pat, pasted in the UI
+ * or sent by refresher/. Takes priority over OAuth.
  */
 const PAT_KEY = "st:pat";
 
@@ -19,7 +19,7 @@ export async function patInfo(): Promise<StoredPat | null> {
   return (await redis().get<StoredPat>(PAT_KEY)) ?? null;
 }
 
-/** Valida o token contra a API antes de salvar, para não trocar um token bom por um ruim. */
+/** Checks the token against the API before saving, so a bad token never replaces a good one. */
 export async function savePat(token: string) {
   const res = await fetch(`${ST_API}/devices`, {
     headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
@@ -27,10 +27,10 @@ export async function savePat(token: string) {
     cache: "no-store",
   });
   if (res.status === 401 || res.status === 403)
-    throw new AcError("needs_reauth", "Token recusado pelo SmartThings", 400);
-  if (!res.ok) throw new AcError("smartthings", `SmartThings respondeu ${res.status}`, 502);
+    throw new AcError("needs_reauth", "SmartThings rejected this token", 400);
+  if (!res.ok) throw new AcError("smartthings", `SmartThings answered ${res.status}`, 502);
   const { items } = (await res.json()) as { items?: unknown[] };
-  if (!items?.length) throw new AcError("no_device", "Esse token não enxerga nenhum aparelho (conta certa? permissões de Devices?)", 400);
+  if (!items?.length) throw new AcError("no_device", "This token can't see any device. Check the account and the Devices permissions.", 400);
   await redis().set(PAT_KEY, { token, savedAt: Date.now() } satisfies StoredPat);
   await redis().del("st:needsReauth");
 }

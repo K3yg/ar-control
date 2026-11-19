@@ -39,10 +39,10 @@ async function tokenRequest(body: Record<string, string>): Promise<TokenResponse
     cache: "no-store",
   });
   let res = await fetch(`${ST_OAUTH}/token`, init());
-  // As fontes divergem sobre o caminho; tenta o alternativo em 404.
+  // Sources disagree on the path; try the other one on 404.
   if (res.status === 404) res = await fetch("https://api.smartthings.com/v1/oauth/token", init());
   if (!res.ok) {
-    // Só o campo de erro, nunca o corpo inteiro (pode conter tokens).
+    // Only the error field, never the whole body (it may contain tokens).
     const data = (await res.json().catch(() => ({}))) as { error?: string };
     throw new TokenHttpError(res.status, `token endpoint ${res.status} ${data.error ?? ""}`.trim());
   }
@@ -64,7 +64,7 @@ export async function readTokens(): Promise<Tokens | null> {
 }
 
 async function saveTokens(t: Tokens) {
-  // Access + refresh numa única chave: gravação atômica do par.
+  // Access + refresh in a single key: the pair is written atomically.
   await redis().set(KEY, t);
   await redis().del(REAUTH);
 }
@@ -79,12 +79,12 @@ export async function exchangeCode(code: string) {
   await saveTokens(toTokens(t));
 }
 
-/** Motivo pelo qual é preciso reconectar, ou null se está tudo certo. */
+/** Why a reconnect is needed, or null when all is fine. */
 export async function needsReauth(): Promise<string | null> {
   if (await readPat()) return null;
   const flag = await redis().get<string>(REAUTH);
   if (flag) return flag;
-  return (await readTokens()) ? null : "Nenhum login feito";
+  return (await readTokens()) ? null : "Not connected yet";
 }
 
 async function releaseLock(id: string) {
@@ -95,7 +95,7 @@ async function releaseLock(id: string) {
   );
 }
 
-/** Renova com lock. `since` = refreshedAt visto; se alguém já renovou depois, usa o par novo. */
+/** Refreshes under a lock. `since` = refreshedAt we saw; if someone refreshed after it, reuse their pair. */
 async function refresh(since: number): Promise<Tokens> {
   const id = randomUUID();
   for (let attempt = 0; attempt < 25; attempt++) {
@@ -103,7 +103,7 @@ async function refresh(since: number): Promise<Tokens> {
     if (got) {
       try {
         const current = await readTokens();
-        if (!current) throw new AcError("needs_reauth", "Nenhum login feito", 401);
+        if (!current) throw new AcError("needs_reauth", "Not connected yet", 401);
         if (current.refreshedAt > since) return current;
         let t: TokenResponse;
         try {
@@ -114,13 +114,13 @@ async function refresh(since: number): Promise<Tokens> {
           });
         } catch (e) {
           if (e instanceof TokenHttpError && (e.status === 400 || e.status === 401)) {
-            const msg = `Refresh rejeitado (${e.message}). Reconecte o SmartThings.`;
+            const msg = `Refresh rejected (${e.message}). Connect SmartThings again.`;
             await redis().set(REAUTH, msg);
             console.error("[tokens]", msg);
             throw new AcError("needs_reauth", msg, 401);
           }
           console.error("[tokens] falha no refresh:", e instanceof Error ? e.message : e);
-          throw new AcError("smartthings", "Falha ao renovar token", 502);
+          throw new AcError("smartthings", "Couldn't refresh the token", 502);
         }
         const next = toTokens(t);
         await saveTokens(next);
@@ -133,14 +133,14 @@ async function refresh(since: number): Promise<Tokens> {
     const t = await readTokens();
     if (t && t.refreshedAt > since) return t;
   }
-  throw new AcError("smartthings", "Timeout aguardando renovação do token", 503);
+  throw new AcError("smartthings", "Timed out waiting for the token refresh", 503);
 }
 
 export async function getValidAccessToken(): Promise<string> {
   const pat = await readPat();
   if (pat) return pat;
   const t = await readTokens();
-  if (!t) throw new AcError("needs_reauth", "Nenhum login feito", 401);
+  if (!t) throw new AcError("needs_reauth", "Not connected yet", 401);
   const life = t.expiresAt - t.refreshedAt;
   if (t.expiresAt - Date.now() < life * 0.25) return (await refresh(t.refreshedAt)).accessToken;
   return t.accessToken;
@@ -148,12 +148,12 @@ export async function getValidAccessToken(): Promise<string> {
 
 export async function forceRefresh(): Promise<Tokens> {
   if (await readPat()) {
-    // PAT não renova: descarta e pede um novo.
+    // A PAT can't be refreshed: drop it and ask for a new one.
     await invalidatePat();
-    await redis().set(REAUTH, "O token da Samsung expirou. Cole um novo.");
-    throw new AcError("needs_reauth", "O token da Samsung expirou. Cole um novo.", 401);
+    await redis().set(REAUTH, "The SmartThings token expired. Paste a new one.");
+    throw new AcError("needs_reauth", "The SmartThings token expired. Paste a new one.", 401);
   }
   const t = await readTokens();
-  if (!t) throw new AcError("needs_reauth", "Nenhum login feito", 401);
+  if (!t) throw new AcError("needs_reauth", "Not connected yet", 401);
   return refresh(t.refreshedAt);
 }

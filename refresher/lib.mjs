@@ -1,4 +1,4 @@
-// Utilitários compartilhados entre login.mjs e refresh.mjs.
+// Helpers shared by login.mjs and refresh.mjs.
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
 export const TOKENS_URL = "https://account.smartthings.com/tokens";
@@ -7,21 +7,21 @@ export const DEFAULT_SCOPES = ["l:devices", "r:devices:*", "w:devices:*", "x:dev
 function required(name) {
   const v = process.env[name];
   if (!v) {
-    console.error(`Variável ausente: ${name} (veja refresher/README.md)`);
+    console.error(`Missing variable: ${name} (see refresher/README.md)`);
     process.exit(2);
   }
   return v;
 }
 
 /**
- * Configuração 100% por variável de ambiente.
- *  APP_URL           base do app que recebe o token (ex.: https://meu-app.vercel.app)
- *  APP_KEY           segredo enviado no header x-ac-key
- *  SESSION_KEY       chave AES-256 (base64, 32 bytes) que criptografa a sessão; só o robô conhece
- *  PAT_TARGET_URL    opcional, padrão: APP_URL/api/pat
- *  SESSION_STORE_URL opcional, padrão: APP_URL/api/refresher/session
- *  PAT_SCOPES        opcional, separados por vírgula
- *  PAT_NAME_PREFIX   opcional, padrão "robo"
+ * Configured only through environment variables.
+ *  APP_URL           base URL of the app that receives the token (e.g. https://my-app.vercel.app)
+ *  APP_KEY           secret sent in the x-ac-key header
+ *  SESSION_KEY       AES-256 key (base64, 32 bytes) that encrypts the session; only the robot knows it
+ *  PAT_TARGET_URL    optional, default APP_URL/api/pat
+ *  SESSION_STORE_URL optional, default APP_URL/api/refresher/session
+ *  PAT_SCOPES        optional, comma-separated
+ *  PAT_NAME_PREFIX   optional, default "refresher"
  */
 export function config() {
   const appUrl = process.env.APP_URL?.replace(/\/$/, "");
@@ -30,7 +30,7 @@ export function config() {
   if (!patTarget || !sessionStore) required("APP_URL");
   const key = Buffer.from(required("SESSION_KEY"), "base64");
   if (key.length !== 32) {
-    console.error("SESSION_KEY precisa ter 32 bytes em base64 (gere com: node -e \"console.log(require('crypto').randomBytes(32).toString('base64'))\")");
+    console.error("SESSION_KEY must be 32 bytes in base64 (generate with: node -e \"console.log(require('crypto').randomBytes(32).toString('base64'))\")");
     process.exit(2);
   }
   return {
@@ -39,7 +39,7 @@ export function config() {
     appKey: required("APP_KEY"),
     key,
     scopes: process.env.PAT_SCOPES ? process.env.PAT_SCOPES.split(",").map((s) => s.trim()) : DEFAULT_SCOPES,
-    namePrefix: process.env.PAT_NAME_PREFIX || "robo",
+    namePrefix: process.env.PAT_NAME_PREFIX || "refresher",
   };
 }
 
@@ -81,7 +81,7 @@ export async function deliverPat(cfg, token) {
   await call(cfg.patTarget, cfg.appKey, { method: "POST", body: JSON.stringify({ token }) });
 }
 
-/** Cria um PAT pela API interna da página de tokens, usando a sessão do navegador. */
+/** Creates a PAT through the tokens page's internal API, using the browser session. */
 export async function createPat(page, { scopes, name }) {
   return page.evaluate(
     async ({ scopes, name }) => {
@@ -99,7 +99,7 @@ export async function createPat(page, { scopes, name }) {
   );
 }
 
-/** Acha o token na resposta sem depender do nome exato do campo. */
+/** Finds the token in the response without relying on the exact field name. */
 export function extractToken(text) {
   let data;
   try {
@@ -112,7 +112,7 @@ export function extractToken(text) {
     if (typeof data?.[k] === "string") return data[k];
     if (typeof data?.token?.[k] === "string") return data.token[k];
   }
-  // fallback: único UUID que não seja id de aparelho/cliente
+  // fallback: the UUID that isn't a device/client id
   const found = [];
   const walk = (o, key) => {
     if (typeof o === "string" && uuid.test(o) && !/device|client|id$/i.test(key || "")) found.push(o);
@@ -122,7 +122,7 @@ export function extractToken(text) {
   return found[0] ?? null;
 }
 
-/** Lista os campos da resposta com valores mascarados, para depuração. */
+/** The response with long values masked, for debugging. */
 export function describe(text) {
   return text.replace(/[A-Za-z0-9-_]{16,}/g, (m) => `<${m.length}ch>`).slice(0, 400);
 }

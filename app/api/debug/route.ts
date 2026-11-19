@@ -2,7 +2,7 @@ import { protectedRoute } from "@/lib/ac";
 import { readTokens } from "@/lib/tokens";
 import { displayStrategy, getDevice, getRawStatus, listDevices } from "@/lib/smartthings";
 
-/** Descoberta (Fase 0): aparelhos da conta, aparelho escolhido, capabilities e status bruto. Sem tokens. */
+/** Discovery: account devices, the chosen device, its capabilities and raw status. Never tokens. */
 export const GET = protectedRoute(async () => {
   const t = await readTokens();
   const [devices, device] = await Promise.all([listDevices(), getDevice()]);

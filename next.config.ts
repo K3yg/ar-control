@@ -2,7 +2,8 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
-  // Permite abrir o servidor de dev pelo celular na rede local.
+  devIndicators: false,
+  // Lets a phone on the LAN open the dev server.
   allowedDevOrigins: ["192.168.1.5"],
 };
 

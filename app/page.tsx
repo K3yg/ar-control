@@ -1,30 +1,29 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AcUnit } from "@/components/ac-unit";
+import { Sky, usePhase } from "@/components/sky";
+import { Presets, type Preset } from "@/components/presets";
+import { Schedules } from "@/components/schedules";
+import { api, type Status } from "@/components/api";
 
-type Status = {
-  power: "on" | "off" | null;
-  mode: string | null;
-  targetTemp: number | null;
-  currentTemp: number | null;
-  windFree: boolean | null;
-  display: boolean | null;
-  online: boolean;
-};
+type Screen = "loading" | "locked" | "reauth" | "ready" | "error";
 
-type Phase = "loading" | "locked" | "reauth" | "ready" | "error";
-
-const MIN = 16;
-const MAX = 30;
-const SLEEP = { power: "on" as const, targetTemp: 25, windFree: true, display: false };
+const MODE_LABEL: Record<string, string> = { auto: "Auto", cool: "Cool", dry: "Dry", wind: "Fan", heat: "Heat" };
+const FAN_LABEL: Record<string, string> = { auto: "Auto", low: "Low", medium: "Med", high: "High", turbo: "Turbo" };
+const SWING_LABEL: Record<string, string> = { fixed: "Still", vertical: "Up–down", horizontal: "Sideways", all: "All" };
 
 export default function Home() {
-  const [phase, setPhase] = useState<Phase>("loading");
+  const phase = usePhase();
+  const [screen, setScreen] = useState<Screen>("loading");
   const [status, setStatus] = useState<Status | null>(null);
+  const [presets, setPresets] = useState<Preset[]>([]);
   const [toast, setToast] = useState<string | null>(null);
-  const [reauthReason, setReauthReason] = useState<string | null>(null);
+  const [reason, setReason] = useState<string | null>(null);
+  const [details, setDetails] = useState(false);
+  const [sheet, setSheet] = useState<"presets" | "schedules" | null>(null);
 
-  const quietUntil = useRef(0); // ignora polls logo após um comando (a nuvem demora a refletir)
+  const quietUntil = useRef(0); // the cloud takes a few seconds to reflect a command
   const tempTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tempBase = useRef<number | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -34,40 +33,43 @@ export default function Home() {
   const flash = useCallback((msg: string) => {
     setToast(msg);
     if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(null), 3500);
+    toastTimer.current = setTimeout(() => setToast(null), 3200);
   }, []);
 
-  const load = useCallback(async (force = false) => {
-    if (!force && Date.now() < quietUntil.current) return;
-    try {
-      const res = await fetch("/api/ac", { cache: "no-store" });
-      const data = await res.json().catch(() => ({}));
-      if (data.error === "unauthorized") return setPhase("locked");
-      if (data.needsReauth) {
-        setReauthReason(data.reason ?? null);
-        return setPhase("reauth");
-      }
-      if (!res.ok) {
-        setPhase((p) => (p === "ready" ? p : "error"));
-        return flash(data.message ?? "Erro ao ler o status");
-      }
-      if (!force && Date.now() < quietUntil.current) return;
-      setStatus(data);
-      setPhase("ready");
-    } catch {
-      flash("Sem conexão");
-      setPhase((p) => (p === "loading" ? "error" : p));
+  const handleAuthError = useCallback((data: Record<string, unknown> | undefined) => {
+    if (data?.error === "unauthorized") return setScreen("locked"), true;
+    if (data?.needsReauth) {
+      setReason((data.reason as string) ?? (data.message as string) ?? null);
+      return setScreen("reauth"), true;
     }
-  }, [flash]);
+    return false;
+  }, []);
 
-  // Status ao abrir e a cada 30s com a página visível.
+  const load = useCallback(
+    async (force = false) => {
+      if (!force && Date.now() < quietUntil.current) return;
+      try {
+        const data = await api<Status & { needsReauth?: boolean; reason?: string }>("/api/ac");
+        if (handleAuthError(data)) return;
+        if (!force && Date.now() < quietUntil.current) return;
+        setStatus(data);
+        setScreen("ready");
+      } catch (e) {
+        const data = (e as { data?: Record<string, unknown> }).data;
+        if (handleAuthError(data)) return;
+        flash((e as Error).message);
+        setScreen((s) => (s === "loading" ? "error" : s));
+      }
+    },
+    [flash, handleAuthError],
+  );
+
+  const loadPresets = useCallback(() => {
+    api<{ presets: Preset[] }>("/api/presets").then((d) => setPresets(d.presets)).catch(() => {});
+  }, []);
+
   useEffect(() => {
     load(true);
-    const auth = new URLSearchParams(location.search).get("auth");
-    if (auth) {
-      flash(auth === "ok" ? "SmartThings conectado" : "Falha ao conectar o SmartThings");
-      history.replaceState(null, "", "/");
-    }
     const id = setInterval(() => document.visibilityState === "visible" && load(), 30_000);
     const onVis = () => document.visibilityState === "visible" && load();
     document.addEventListener("visibilitychange", onVis);
@@ -75,33 +77,26 @@ export default function Home() {
       clearInterval(id);
       document.removeEventListener("visibilitychange", onVis);
     };
-  }, [load, flash]);
+  }, [load]);
 
-  /** Envia o estado desejado com UI otimista; reverte para `prev` se falhar. */
+  useEffect(() => {
+    if (screen === "ready") loadPresets();
+  }, [screen, loadPresets]);
+
+  /** Sends a desired state with an optimistic UI; reverts to `prev` on failure. */
   const send = useCallback(
     async (body: Record<string, unknown>, prev: Status | null, url = "/api/ac") => {
       quietUntil.current = Date.now() + 6000;
       try {
-        const res = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (data.error === "unauthorized") return setPhase("locked");
-        if (data.needsReauth) {
-          setReauthReason(data.message ?? null);
-          return setPhase("reauth");
-        }
-        if (!res.ok) throw new Error(data.message ?? "Comando falhou");
+        await api(url, { method: "POST", body: JSON.stringify(body) });
         setTimeout(() => load(true), 6000);
       } catch (e) {
         quietUntil.current = 0;
         setStatus(prev);
-        flash(e instanceof Error ? e.message : "Comando falhou");
+        if (!handleAuthError((e as { data?: Record<string, unknown> }).data)) flash((e as Error).message);
       }
     },
-    [load, flash],
+    [load, flash, handleAuthError],
   );
 
   const apply = (patch: Partial<Status>, body: Record<string, unknown>, url?: string) => {
@@ -111,124 +106,241 @@ export default function Home() {
     send(body, prev, url);
   };
 
-  const togglePower = () => {
-    const on = status?.power !== "on";
-    apply({ power: on ? "on" : "off" }, { power: on ? "on" : "off" });
-  };
-
   const stepTemp = (delta: number) => {
-    if (!status) return;
-    const current = status.targetTemp ?? 25;
-    const next = Math.min(MAX, Math.max(MIN, current + delta));
+    const s = statusRef.current;
+    if (!s) return;
+    const current = s.targetTemp ?? 24;
+    const next = Math.min(s.maxTemp, Math.max(s.minTemp, current + delta));
     if (next === current) return;
     if (tempBase.current === null) tempBase.current = current;
     quietUntil.current = Date.now() + 8000;
-    setStatus({ ...status, targetTemp: next });
+    setStatus({ ...s, targetTemp: next });
     if (tempTimer.current) clearTimeout(tempTimer.current);
     tempTimer.current = setTimeout(() => {
       const base = tempBase.current;
       tempBase.current = null;
-      const s = statusRef.current;
-      if (s) send({ temp: next }, { ...s, targetTemp: base });
+      const latest = statusRef.current;
+      if (latest) send({ temp: next }, { ...latest, targetTemp: base });
     }, 600);
   };
 
-  if (phase === "locked") return <Unlock onDone={() => load(true)} />;
+  const runPreset = (p: Preset) => {
+    const st = p.state;
+    apply(
+      {
+        ...(st.power ? { power: st.power } : {}),
+        ...(st.temp ? { targetTemp: st.temp } : {}),
+        ...(st.mode ? { mode: st.mode } : {}),
+        ...(st.fan ? { fanMode: st.fan } : {}),
+        ...(st.swing ? { swing: st.swing } : {}),
+        ...(st.windFree !== undefined ? { windFree: st.windFree } : {}),
+        ...(st.display !== undefined ? { display: st.display } : {}),
+      },
+      {},
+      `/api/ac/preset/${p.id}`,
+    );
+    flash(`${p.name} applied`);
+  };
 
   const on = status?.power === "on";
-  const offline = status && !status.online;
+  const windFree = !!status?.windFree;
 
   return (
-    <main className="app">
-      <header className="top">
-        <span className="title">Ar</span>
-        <span className={`meta ${offline ? "err" : ""}`}>
-          {phase === "loading" ? "…" : offline ? "offline" : status ? (on ? "ligado" : "desligado") : ""}
-        </span>
-      </header>
-
-      {phase === "reauth" ? (
-        <PatForm
-          reason={reauthReason}
-          onDone={() => {
-            flash("Token salvo");
-            load(true);
-          }}
-        />
+    <div className={`root phase-${phase}`}>
+      <Sky phase={phase} />
+      {screen === "locked" ? (
+        <Unlock onDone={() => load(true)} />
       ) : (
-        <>
-          <section className="temp">
-            <button className="step" onClick={() => stepTemp(-1)} disabled={!status || (status.targetTemp ?? 0) <= MIN} aria-label="Diminuir">
-              −
-            </button>
-            <div className="temp-value">
-              <div className={`temp-num ${on ? "" : "off"}`}>{status?.targetTemp ?? "--"}°</div>
-              <div className="temp-sub">
-                {status?.currentTemp != null ? `ambiente ${status.currentTemp}°` : " "}
+        <main className="app">
+          <header className="bar">
+            <span className="brand">Air</span>
+            <span className={`state ${status && !status.online ? "warn" : ""}`}>
+              {screen === "loading" ? "Connecting…" : !status ? "" : !status.online ? "Offline" : on ? "Running" : "Off"}
+            </span>
+          </header>
+
+          {screen === "reauth" ? (
+            <PatForm reason={reason} onDone={() => (flash("Token saved"), load(true))} />
+          ) : (
+            <>
+              <section className="hero">
+                <AcUnit
+                  on={on}
+                  fan={status?.fanMode ?? null}
+                  swing={status?.swing ?? null}
+                  windFree={windFree}
+                  display={status?.display ?? true}
+                  temp={status?.targetTemp ?? null}
+                />
+              </section>
+
+              <section className="temp">
+                <button className="step" onClick={() => stepTemp(-1)} disabled={!status || !on} aria-label="Cooler">
+                  −
+                </button>
+                <div className="temp-read">
+                  <div className={`temp-num ${on ? "" : "dim"}`}>
+                    {status?.targetTemp ?? "–"}
+                    <span className="deg">°</span>
+                  </div>
+                  <div className="temp-room">{status?.currentTemp != null ? `${status.currentTemp}° in the room` : " "}</div>
+                </div>
+                <button className="step" onClick={() => stepTemp(1)} disabled={!status || !on} aria-label="Warmer">
+                  +
+                </button>
+              </section>
+
+              <div className="power-wrap">
+                <button
+                  className={`power ${on ? "on" : ""}`}
+                  disabled={!status}
+                  onClick={() => apply({ power: on ? "off" : "on" }, { power: on ? "off" : "on" })}
+                >
+                  {on ? "Turn off" : "Turn on"}
+                </button>
               </div>
-            </div>
-            <button className="step" onClick={() => stepTemp(1)} disabled={!status || (status.targetTemp ?? 99) >= MAX} aria-label="Aumentar">
-              +
-            </button>
-          </section>
 
-          <div className="list">
-            <Row label="Ligado" value={status?.power == null ? null : on} onClick={togglePower} disabled={!status} />
-            <Row
-              label="WindFree"
-              value={status?.windFree ?? null}
-              disabled={!status || !on}
-              onClick={() => apply({ windFree: !status?.windFree }, { windFree: !status?.windFree })}
-            />
-            <Row
-              label="Display"
-              value={status?.display ?? null}
-              disabled={!status || !on}
-              onClick={() => {
-                const next = !(status?.display ?? true);
-                apply({ display: next }, { display: next });
+              <section className={`controls ${on ? "" : "inert"}`}>
+                <Choice
+                  label="Mode"
+                  options={status?.modes ?? []}
+                  value={status?.mode ?? null}
+                  names={MODE_LABEL}
+                  onPick={(m) => apply({ mode: m, ...(m !== "cool" ? { windFree: false } : {}) }, { mode: m })}
+                />
+                <Choice
+                  label="Fan"
+                  options={status?.fanModes ?? []}
+                  value={status?.fanMode ?? null}
+                  names={FAN_LABEL}
+                  note={windFree ? "WindFree keeps the fan on auto. Picking a speed turns it off." : undefined}
+                  onPick={(f) =>
+                    apply({ fanMode: f, ...(f !== "auto" && windFree ? { windFree: false } : {}) }, { fan: f })
+                  }
+                />
+                <Choice
+                  label="Airflow"
+                  options={status?.swingModes ?? []}
+                  value={status?.swing ?? null}
+                  names={SWING_LABEL}
+                  onPick={(s) => apply({ swing: s }, { swing: s })}
+                />
+                <Switch
+                  label="WindFree"
+                  hint="Cools without direct wind"
+                  value={status?.windFree ?? null}
+                  onToggle={() => apply({ windFree: !windFree, ...(!windFree ? { mode: "cool", fanMode: "auto" } : {}) }, { windFree: !windFree })}
+                />
+                <Switch
+                  label="Display"
+                  value={status?.display ?? null}
+                  onToggle={() => {
+                    const next = !(status?.display ?? true);
+                    apply({ display: next }, { display: next });
+                  }}
+                />
+              </section>
+
+              <section className="group">
+                <div className="group-head">
+                  <span>Presets</span>
+                  <button className="link" onClick={() => setSheet("presets")}>
+                    Edit
+                  </button>
+                </div>
+                <div className="chips">
+                  {presets.map((p) => (
+                    <button key={p.id} className="chip" disabled={!status} onClick={() => runPreset(p)}>
+                      {p.name}
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              <Schedules presets={presets} flash={flash} open={sheet === "schedules"} onOpen={() => setSheet("schedules")} onClose={() => setSheet(null)} />
+
+              <section className="group">
+                <button className="details-toggle" onClick={() => setDetails((d) => !d)} aria-expanded={details}>
+                  Details
+                </button>
+                {details && status && (
+                  <dl className="details">
+                    <div>
+                      <dt>Humidity</dt>
+                      <dd>{status.humidity != null ? `${status.humidity}%` : "–"}</dd>
+                    </div>
+                    <div>
+                      <dt>Drawing now</dt>
+                      <dd>{status.watts != null ? `${status.watts} W` : "–"}</dd>
+                    </div>
+                    <div>
+                      <dt>Used so far</dt>
+                      <dd>{status.energyKwh != null ? `${status.energyKwh} kWh` : "–"}</dd>
+                    </div>
+                  </dl>
+                )}
+              </section>
+            </>
+          )}
+
+          {sheet === "presets" && (
+            <Presets
+              presets={presets}
+              status={status}
+              onClose={() => setSheet(null)}
+              onSaved={(list) => {
+                setPresets(list);
+                flash("Presets saved");
               }}
+              flash={flash}
             />
-            <button
-              className="row"
-              disabled={!status}
-              onClick={() => apply(SLEEP, {}, "/api/ac/preset/sleep")}
-            >
-              <span className="row-label">
-                Dormir
-                <span className="row-sub">25° · windfree · display off</span>
-              </span>
-              <span className="chev">→</span>
-            </button>
-          </div>
-        </>
+          )}
+        </main>
       )}
-
-      <div className="spacer" />
-      <footer className="foot">
-        <span className="meta">{status?.mode && on ? status.mode : ""}</span>
-      </footer>
-
       {toast && <div className="toast">{toast}</div>}
-    </main>
+    </div>
   );
 }
 
-function Row({
+function Choice({
   label,
+  options,
   value,
-  onClick,
-  disabled,
+  names,
+  note,
+  onPick,
 }: {
   label: string;
-  value: boolean | null;
-  onClick: () => void;
-  disabled?: boolean;
+  options: string[];
+  value: string | null;
+  names: Record<string, string>;
+  note?: string;
+  onPick: (v: string) => void;
 }) {
+  if (!options.length) return null;
   return (
-    <button className="row" onClick={onClick} disabled={disabled} role="switch" aria-checked={!!value}>
+    <div className="row">
       <span className="row-label">{label}</span>
-      <span className={`toggle ${value ? "on" : ""} ${value === null ? "unknown" : ""}`} />
+      <div className="seg" role="radiogroup" aria-label={label}>
+        {options.map((o) => (
+          <button key={o} role="radio" aria-checked={o === value} className={o === value ? "sel" : ""} onClick={() => o !== value && onPick(o)}>
+            {names[o] ?? o}
+          </button>
+        ))}
+      </div>
+      {note && <p className="row-note">{note}</p>}
+    </div>
+  );
+}
+
+function Switch({ label, hint, value, onToggle }: { label: string; hint?: string; value: boolean | null; onToggle: () => void }) {
+  return (
+    <button className="row switch-row" role="switch" aria-checked={!!value} onClick={onToggle}>
+      <span className="row-label">
+        {label}
+        {hint && <span className="row-hint">{hint}</span>}
+      </span>
+      <span className={`switch ${value ? "on" : ""} ${value === null ? "unknown" : ""}`} />
     </button>
   );
 }
@@ -242,40 +354,31 @@ function PatForm({ reason, onDone }: { reason: string | null; onDone: () => void
     e.preventDefault();
     setBusy(true);
     setErr(null);
-    const res = await fetch("/api/pat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: token.trim() }),
-    }).catch(() => null);
-    const data = await res?.json().catch(() => ({}));
-    setBusy(false);
-    if (res?.ok) {
+    try {
+      await api("/api/pat", { method: "POST", body: JSON.stringify({ token: token.trim() }) });
       setToken("");
       onDone();
-    } else setErr(data?.message ?? "Falhou");
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
     <form className="center" onSubmit={submit}>
+      <h1 className="center-title">{reason && reason !== "Not connected yet" ? "SmartThings token expired" : "Connect SmartThings"}</h1>
       <p>
-        {reason && reason !== "Nenhum login feito" ? reason : "Cole um token do SmartThings para conectar."}{" "}
-        Gere em{" "}
-        <a className="link" href="https://account.smartthings.com/tokens" target="_blank" rel="noreferrer">
+        Paste a personal access token with the Devices permissions. Create one at{" "}
+        <a href="https://account.smartthings.com/tokens" target="_blank" rel="noreferrer">
           account.smartthings.com/tokens
-        </a>{" "}
-        com as permissões de Devices.
+        </a>
+        . The refresher robot does this for you every 12 hours.
       </p>
-      <input
-        className="field"
-        placeholder="token"
-        autoComplete="off"
-        spellCheck={false}
-        value={token}
-        onChange={(e) => setToken(e.target.value)}
-      />
-      {err && <span className="meta err">{err}</span>}
+      <input className="field" placeholder="Token" autoComplete="off" spellCheck={false} value={token} onChange={(e) => setToken(e.target.value)} />
+      {err && <span className="err">{err}</span>}
       <button className="btn" disabled={busy || !token}>
-        {busy ? "…" : "Salvar"}
+        {busy ? "Saving…" : "Save token"}
       </button>
     </form>
   );
@@ -290,35 +393,26 @@ function Unlock({ onDone }: { onDone: () => void }) {
     e.preventDefault();
     setBusy(true);
     setErr(false);
-    const res = await fetch("/api/session", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key: key.trim() }),
-    }).catch(() => null);
+    const ok = await api("/api/session", { method: "POST", body: JSON.stringify({ key: key.trim() }) })
+      .then(() => true)
+      .catch(() => false);
     setBusy(false);
-    if (res?.ok) onDone();
+    if (ok) onDone();
     else setErr(true);
   };
 
   return (
     <main className="app">
-      <header className="top">
-        <span className="title">Ar</span>
+      <header className="bar">
+        <span className="brand">Air</span>
       </header>
       <form className="center" onSubmit={submit}>
-        <p>Cole a chave de acesso. Só é pedida uma vez neste aparelho.</p>
-        <input
-          className="field"
-          type="password"
-          autoComplete="current-password"
-          placeholder="AC_API_KEY"
-          value={key}
-          onChange={(e) => setKey(e.target.value)}
-          autoFocus
-        />
-        {err && <span className="meta err">chave inválida</span>}
+        <h1 className="center-title">Unlock</h1>
+        <p>Enter the access key. This device will remember it.</p>
+        <input className="field" type="password" autoComplete="current-password" placeholder="Access key" value={key} onChange={(e) => setKey(e.target.value)} autoFocus />
+        {err && <span className="err">That key didn't work.</span>}
         <button className="btn" disabled={busy || !key}>
-          {busy ? "…" : "Entrar"}
+          {busy ? "Checking…" : "Unlock"}
         </button>
       </form>
     </main>
