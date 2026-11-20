@@ -132,12 +132,28 @@ export async function deleteScheduleById(id: string) {
   await qstash()?.schedules.delete(id);
 }
 
-export async function verifyQstash(req: Request, body: string): Promise<boolean> {
+export function appUrl(path: string) {
+  return runUrl().replace(/\/api\/schedules\/run$/, path);
+}
+
+/** Keeps one QStash schedule pointing at path (creates it, or fixes its cron). */
+export async function ensureSystemSchedule(path: string, cron: string) {
+  const client = qstash();
+  if (!client) return null;
+  const url = appUrl(path);
+  const mine = (await client.schedules.list()).filter((s) => s.destination === url);
+  if (mine.length === 1 && mine[0].cron === cron) return mine[0].scheduleId;
+  for (const s of mine) await client.schedules.delete(s.scheduleId);
+  const { scheduleId } = await client.schedules.create({ destination: url, cron, retries: 1, body: "{}", headers: { "content-type": "application/json" } });
+  return scheduleId;
+}
+
+export async function verifyQstash(req: Request, body: string, url = runUrl()): Promise<boolean> {
   const current = process.env.QSTASH_CURRENT_SIGNING_KEY;
   const next = process.env.QSTASH_NEXT_SIGNING_KEY;
   const signature = req.headers.get("upstash-signature");
   if (!current || !next || !signature) return false;
   return new Receiver({ currentSigningKey: current, nextSigningKey: next })
-    .verify({ signature, body, url: runUrl() })
+    .verify({ signature, body, url })
     .catch(() => false);
 }
