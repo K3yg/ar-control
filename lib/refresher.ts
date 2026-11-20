@@ -139,8 +139,15 @@ export async function tick({ force = false } = {}) {
   // The page itself runs the renew chain (smartthings → samsung → back) when the JWT is old.
   await jar.fetch(TOKENS_PAGE, { headers: { accept: "text/html" } });
   const list = await jar.fetch(TOKENS_API, { headers: { accept: "application/json", referer: TOKENS_PAGE } });
-  const alive = list.res.status === 200 && list.url.hostname === "account.smartthings.com" && (list.res.headers.get("content-type") ?? "").includes("json");
-  if (!alive) return setStatus(false, `Session expired (${list.res.status} at ${list.url.hostname}). Run \`npm run login\` in refresher/.`);
+  // The list comes back as text/plain, so parse it instead of trusting the content type.
+  const listText = await list.res.text();
+  let alive = list.res.status === 200 && list.url.hostname === "account.smartthings.com";
+  try {
+    alive &&= Array.isArray(JSON.parse(listText));
+  } catch {
+    alive = false;
+  }
+  if (!alive) return setStatus(false, `Session expired (HTTP ${list.res.status} at ${list.url.hostname}). Run \`npm run login\` in refresher/.`);
 
   const pat = await patInfo();
   let patAt: number | undefined;
