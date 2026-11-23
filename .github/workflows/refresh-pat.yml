@@ -2,8 +2,13 @@ name: Refresh SmartThings token
 
 on:
   schedule:
-    - cron: "23 */12 * * *" # every 12h (tokens last 24h)
+    - cron: "23 */6 * * *" # every 6h (tokens last 24h; GitHub often runs schedules late)
   workflow_dispatch:
+    inputs:
+      google:
+        description: Skip the saved session and sign in again through Google
+        type: boolean
+        default: false
 
 concurrency:
   group: refresh-pat
@@ -25,7 +30,8 @@ jobs:
           cache-dependency-path: refresher/package-lock.json
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - run: npm start
+      # Reuse the saved session; when it has run out (~2h after sign-in), sign in again through Google.
+      - run: ${{ inputs.google && 'npm run renew' || 'npm start || npm run renew' }}
         env:
           APP_URL: ${{ secrets.APP_URL }}
           APP_KEY: ${{ secrets.APP_KEY }}

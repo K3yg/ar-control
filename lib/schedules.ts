@@ -136,16 +136,13 @@ export function appUrl(path: string) {
   return runUrl().replace(/\/api\/schedules\/run$/, path);
 }
 
-/** Keeps one QStash schedule pointing at path (creates it, or fixes its cron). */
-export async function ensureSystemSchedule(path: string, cron: string) {
+export async function deleteSystemSchedule(path: string) {
   const client = qstash();
-  if (!client) return null;
+  if (!client) return 0;
   const url = appUrl(path);
   const mine = (await client.schedules.list()).filter((s) => s.destination === url);
-  if (mine.length === 1 && mine[0].cron === cron) return mine[0].scheduleId;
   for (const s of mine) await client.schedules.delete(s.scheduleId);
-  const { scheduleId } = await client.schedules.create({ destination: url, cron, retries: 1, body: "{}", headers: { "content-type": "application/json" } });
-  return scheduleId;
+  return mine.length;
 }
 
 export async function verifyQstash(req: Request, body: string, url = runUrl()): Promise<boolean> {

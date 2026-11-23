@@ -4,11 +4,16 @@ Creates SmartThings **personal access tokens (PATs)** automatically. PATs expire
 since November 2026 SmartThings OAuth apps require a paid plan. This robot reuses a signed-in Samsung
 session to create a new PAT on every run and send it to a URL of yours.
 
-- **No password stored.** You sign in **once**, by hand (captcha included); only the session cookies are kept.
-- **Encrypted session.** It's encrypted with AES-256-GCM using `SESSION_KEY`, which only the robot
-  knows. The server that stores the blob can't read it.
-- **Self-renewing.** Each run renews the cookies, which keeps the session alive.
+- **No password stored.** You sign in **once**, by hand, with **Sign in with Google**; only the session cookies are kept.
+- **Encrypted session.** It's encrypted with AES-256-GCM using `SESSION_KEY`. The server that stores
+  the blob can't read it.
+- **Self-renewing.** The Samsung session only lasts about 2 hours and can't be extended. When it has
+  run out, the robot signs in to Samsung again through Google (whose session lasts months), with no
+  password and no captcha.
 - **Backend-agnostic.** It only needs two HTTP endpoints, so it works with any app, not just this one.
+
+Your Samsung account has to be linked to Google: sign in once with *Sign in with Google* using the
+same Google account as your Samsung email. If Samsung offers to create a new account, cancel.
 
 ## Configuration
 
@@ -30,20 +35,24 @@ session to create a new PAT on every run and send it to a URL of yours.
 cd refresher
 npm install && npx playwright install chromium
 cp .env.example .env   # fill it in
-npm run login          # once: a browser opens, you sign in, the session is saved
-npm start              # creates and delivers a token
+npm run login          # once: a browser opens, click "Sign in with Google"; creates the first token
+npm start              # creates a token from the saved session (works for ~2h after a sign-in)
+npm run renew          # signs in again through Google, headless, and creates a token
 ```
 
-## Run it every 12 hours (GitHub Actions)
+`npm run login:password` is the old email + password sign-in. It works, but the robot can't renew it on its own.
 
-`.github/workflows/refresh-pat.yml` runs every 12 hours. Add the repository secrets `APP_URL`,
-`APP_KEY` and `SESSION_KEY`, for example with `gh secret set -f refresher/.env`.
+## Run it every 6 hours (GitHub Actions)
+
+`.github/workflows/refresh-pat.yml` runs every 6 hours: `npm start || npm run renew`. Add the
+repository secrets `APP_URL`, `APP_KEY` and `SESSION_KEY`, for example with `gh secret set -f refresher/.env`.
 You can also run it by hand: *Actions → Refresh SmartThings token → Run workflow*.
 
-## When the session runs out
+## When Google asks you to confirm
 
-The robot exits with code 4 ("Session expired") and GitHub emails you about the failed run.
-Run `npm run login` again on your computer. Meanwhile the app accepts a token pasted by hand.
+If Google ever wants to confirm it's you (a new device or location), `npm run renew` fails and
+GitHub emails you about the failed run. Run `npm run login` on your computer once. Meanwhile the
+app accepts a token pasted by hand.
 
 ## Exit codes
 

@@ -3,11 +3,15 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Gera Personal Access Tokens do SmartThings automaticamente reaproveitando uma sessão da conta Samsung",
-  "engines": { "node": ">=22" },
+  "description": "Creates SmartThings personal access tokens automatically from a saved Samsung session, signing in again through Google when it runs out",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
-    "login": "node --env-file-if-exists=.env login.mjs",
-    "start": "node --env-file-if-exists=.env refresh.mjs"
+    "login": "node --env-file-if-exists=.env google.mjs login",
+    "login:password": "node --env-file-if-exists=.env login.mjs",
+    "start": "node --env-file-if-exists=.env refresh.mjs",
+    "renew": "node --env-file-if-exists=.env google.mjs renew"
   },
   "dependencies": {
     "playwright": "^1"
