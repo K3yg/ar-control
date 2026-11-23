@@ -11,7 +11,9 @@ const step = (m) => console.log(`${new Date().toLocaleTimeString("pt-BR", { time
 const headless = mode === "renew" && !process.env.HEADED;
 // channel "chromium" = the full browser in new headless mode.
 // FedCM (Chrome's native account dialog) can't be clicked headless; without it Google uses a popup.
-const browser = await chromium.launch({ headless, channel: "chromium", args: ["--disable-features=FedCm"] });
+// BROWSER_CHANNEL=shell uses the lighter headless shell (what Lambda builds ship).
+const channel = process.env.BROWSER_CHANNEL === "shell" ? undefined : "chromium";
+const browser = await chromium.launch({ headless, channel, args: ["--disable-features=FedCm"] });
 // Google turns down "HeadlessChrome" in the user agent; same browser, the plain Chrome name.
 const UA = (await browser.newContext().then(async (c) => { const p = await c.newPage(); const ua = await p.evaluate(() => navigator.userAgent); await c.close(); return ua; })).replace("HeadlessChrome", "Chrome");
 
