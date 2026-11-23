@@ -1,0 +1,28 @@
+name: Renew experiment
+
+on:
+  workflow_dispatch:
+
+jobs:
+  experiment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 200
+    defaults:
+      run:
+        working-directory: refresher
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: refresher/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: node experiment.mjs
+        env:
+          CI: "1"
+          ROUNDS: "17"
+          APP_URL: ${{ secrets.APP_URL }}
+          APP_KEY: ${{ secrets.APP_KEY }}
+          SESSION_KEY: ${{ secrets.SESSION_KEY }}
