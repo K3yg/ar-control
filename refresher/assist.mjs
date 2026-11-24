@@ -13,6 +13,7 @@ const WAIT_MIN = Number(process.env.ASSIST_WAIT_MINUTES || 10);
 const step = (m) => console.log(`${new Date().toLocaleTimeString("pt-BR")} ${m}`);
 
 const profile = fileURLToPath(new URL(".profile", import.meta.url));
+const minimized = process.env.ASSIST_MINIMIZED !== "0";
 const context = await chromium.launchPersistentContext(profile, { headless: false, viewport: { width: 1000, height: 800 } });
 const page = context.pages()[0] ?? (await context.newPage());
 
@@ -20,7 +21,12 @@ const page = context.pages()[0] ?? (await context.newPage());
 const cdp = await context.newCDPSession(page);
 const { windowId } = await cdp.send("Browser.getWindowForTarget");
 const windowState = (state) => cdp.send("Browser.setWindowBounds", { windowId, bounds: { windowState: state } }).catch(() => {});
-if (process.env.ASSIST_MINIMIZED !== "0") await windowState("minimized");
+if (minimized) await windowState("minimized");
+/** Brings the window back on screen, in front, for a captcha. */
+const showWindow = async () => {
+  await windowState("normal");
+  await page.bringToFront().catch(() => {});
+};
 
 const onTokens = async () =>
   page.url().startsWith(TOKENS_URL) &&
@@ -44,8 +50,7 @@ try {
       if (!sawCaptcha && (await visible('iframe[src*="recaptcha"][src*="bframe"]'))) {
         sawCaptcha = true;
         step("Captcha shown: waiting for you to solve it.");
-        await windowState("normal");
-        await page.bringToFront().catch(() => {});
+        await showWindow();
       }
       const passBox = 'input[type="password"]';
       if (email && !filledEmail && (await visible(emailBox)) && !(await visible(passBox))) {
