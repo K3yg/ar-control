@@ -28,11 +28,17 @@ try {
   let filledEmail = false;
   let filledPassword = false;
   let told = false;
+  let sawCaptcha = false;
 
   while (!(await onTokens())) {
     if (page.isClosed() || Date.now() > deadline) throw new Error("Sign-in wasn't completed in time");
     if (new URL(page.url()).host === "account.samsung.com") {
-      const emailBox = 'input[type="email"], input[name="iptLgnPlnID"], input[autocomplete="username"]';
+      const emailBox = 'input#account, input[name="account"], input[type="email"]';
+      // reCAPTCHA's challenge lives in the "bframe" iframe; it's only visible when a human is needed.
+      if (!sawCaptcha && (await visible('iframe[src*="recaptcha"][src*="bframe"]'))) {
+        sawCaptcha = true;
+        step("Captcha shown: waiting for you to solve it.");
+      }
       const passBox = 'input[type="password"]';
       if (email && !filledEmail && (await visible(emailBox)) && !(await visible(passBox))) {
         await page.locator(emailBox).first().fill(email);
@@ -45,14 +51,14 @@ try {
         filledPassword = true;
         step("Password filled in.");
       } else if (filledPassword && !told) {
-        step("Waiting for you: solve the captcha in the window if there is one.");
+        step("Password sent, waiting for Samsung.");
         told = true;
       }
     }
     await page.waitForTimeout(1500);
   }
 
-  step("Signed in.");
+  step(`Signed in. Email ${filledEmail ? "filled by the robot" : "not filled by the robot"}, captcha ${sawCaptcha ? "shown" : "not detected"}.`);
   await saveSession(cfg, await context.storageState());
   const { status, text } = await createPat(page, { scopes: cfg.scopes, name: `${cfg.namePrefix}-${Date.now()}` });
   const token = extractToken(text);
