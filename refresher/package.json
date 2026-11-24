@@ -11,7 +11,9 @@
     "login": "node --env-file-if-exists=.env google.mjs login",
     "login:password": "node --env-file-if-exists=.env login.mjs",
     "start": "node --env-file-if-exists=.env refresh.mjs",
-    "renew": "node --env-file-if-exists=.env google.mjs renew"
+    "renew": "node --env-file-if-exists=.env google.mjs renew",
+    "assist": "node --env-file-if-exists=.env assist.mjs",
+    "auto": "node --env-file-if-exists=.env auto.mjs"
   },
   "dependencies": {
     "playwright": "^1"

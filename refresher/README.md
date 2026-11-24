@@ -57,3 +57,24 @@ app accepts a token pasted by hand.
 ## Exit codes
 
 `2` configuration · `3` no saved session · `4` session expired · `5` token creation failed · `6` no token in the response
+
+## Run it on your Windows PC (recommended)
+
+The Samsung session only lasts about 2 hours, so a cloud robot can't keep it alive. Instead, a
+scheduled task on your own PC signs in for you, from your own connection:
+
+1. Add `SAMSUNG_EMAIL` and `SAMSUNG_PASSWORD` to `refresher/.env` (it never leaves your PC).
+2. Register the task (PowerShell, from `refresher/`):
+
+   ```powershell
+   $dir = (Get-Location).Path
+   $action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "`"$dir\auto-hidden.vbs`"" -WorkingDirectory $dir
+   $triggers = @((New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME),
+     (New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Hours 1)))
+   $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -MultipleInstances IgnoreNew
+   Register-ScheduledTask -TaskName "AC token refresher" -Action $action -Trigger $triggers -Settings $settings
+   ```
+
+Every hour `auto.mjs` checks the app's token. Once it's older than 20 hours, a window opens,
+fills in your email and password, and waits for you only if a captcha shows up. Then it delivers
+the token and closes. Missed it? It tries again the next hour. `auto.log` keeps one line per attempt.

@@ -1,2 +1,4 @@
 experiment.log
 *.png
+auto.log
+.profile/
