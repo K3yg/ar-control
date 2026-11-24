@@ -16,6 +16,12 @@ const profile = fileURLToPath(new URL(".profile", import.meta.url));
 const context = await chromium.launchPersistentContext(profile, { headless: false, viewport: { width: 1000, height: 800 } });
 const page = context.pages()[0] ?? (await context.newPage());
 
+// The window starts minimized (ASSIST_MINIMIZED=0 to keep it in front) and pops up only for a captcha.
+const cdp = await context.newCDPSession(page);
+const { windowId } = await cdp.send("Browser.getWindowForTarget");
+const windowState = (state) => cdp.send("Browser.setWindowBounds", { windowId, bounds: { windowState: state } }).catch(() => {});
+if (process.env.ASSIST_MINIMIZED !== "0") await windowState("minimized");
+
 const onTokens = async () =>
   page.url().startsWith(TOKENS_URL) &&
   (await page.evaluate(() => fetch("/api/tokens", { credentials: "include" }).then((r) => r.ok)).catch(() => false));
@@ -38,6 +44,8 @@ try {
       if (!sawCaptcha && (await visible('iframe[src*="recaptcha"][src*="bframe"]'))) {
         sawCaptcha = true;
         step("Captcha shown: waiting for you to solve it.");
+        await windowState("normal");
+        await page.bringToFront().catch(() => {});
       }
       const passBox = 'input[type="password"]';
       if (email && !filledEmail && (await visible(emailBox)) && !(await visible(passBox))) {
